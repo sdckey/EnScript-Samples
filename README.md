@@ -3,6 +3,6 @@ This repository is a collection of EnScript code samples for use in the Guidance
 
 EnScript is a proprietary scripting language with roots in C++. It also has elements of Java and C#.
 
-EnScripts can include other EnScript library files, resource files and .NET assemblies. They can be packaged into files with a *.EnPack file-extension.
+EnScripts can include other EnScript library files, resource files and .NET assemblies. They can be packaged into files with an 'EnPack' file-extension.
 
 Each script has been tested/developed under EnCase V7 unless specified otherwise.
