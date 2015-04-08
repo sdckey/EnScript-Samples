@@ -23,6 +23,14 @@ class MainClass {
 
     if (c) // No need to check for c != null
     {
+      /*
+
+        CaseClass inherits the Name() property from NodeClass.
+        Most properties of internal EnScript classes are property-
+        accessor functions, hence the parentheses.
+
+      */
+
       Console.WriteLine(c.Name());
     }
     else
