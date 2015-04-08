@@ -1,0 +1,14 @@
+/*
+
+  Basic Hello World example.
+
+*/
+
+class MainClass {                              // Every "executable" EnScript must have a MainClass.
+  void Main(CaseClass c) {                     // Entry point for the script.
+    SystemClass::ClearConsole(SHOWCONSOLE);    // Clears the console. Switches to the console after
+                                               // script execution depending on the current view.
+
+    Console.WriteLine("Hello World!");
+  }
+}
