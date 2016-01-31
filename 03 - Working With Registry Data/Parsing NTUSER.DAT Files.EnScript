@@ -1,0 +1,98 @@
+/*
+ This example shows how to iterate the case looking for NTUSER.DAT files.
+
+ Recent document information is extracted and written to a sequence of
+ note bookmarks. These are grouped according to source-file and file-
+ extension.
+
+ The HKEY_ENTRY_HIVE option is used because the HKEY_CURRENT_USER option
+ doesn't always identify the hive that the examiner wishes to process.
+ */
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      uint counter;
+      BookmarkClass folder(c.BookmarkRoot(), "Results", NodeClass::FOLDER);
+      ItemIteratorClass iter(c, NORECURSE | NOPROXY);
+      while (EntryClass e = iter.GetNextEntry())
+      {
+        if (e.Name().Compare("NTUSER.DAT") == 0)
+        {
+          Console.WriteLine("Processing '{0}'", e.ItemPath());
+          RegistryClass reg(e);
+          RegCommandClass cmds();
+          String target_name = "Recent Docs";
+          new RegCommandClass(cmds,
+                              target_name,
+                              READKEY, HKEY_ENTRY_HIVE,
+                              "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs", "",
+                              0,
+                              -1);
+          RegValueClass values();
+          if (reg.Run(cmds, values))
+          {
+            if ((RegValueClass target = values.Find(target_name)) && !target.Error())
+            {
+              if (target.Count())
+              {
+                BookmarkClass sub(folder,
+                                  String::Format("{0} - NTUSER.DAT",
+                                                 String::FormatInt(counter++, int::DECIMAL, 0, 6)),
+                                  NodeClass::FOLDER);
+                sub.SetComment(e.ItemPath());
+                /*
+                 Process after each file-extension Registry key (folder)
+                 */
+                foreach (RegValueClass ext in target)
+                {
+                  if (ext.IsFolder())
+                  {
+                    BookmarkClass ext_folder(sub, ext.Name(), NodeClass::FOLDER);
+                    /*
+                     Process each recent-file entry
+                     */
+                    foreach (RegValueClass file in ext)
+                    {
+                      if (file.Name().Compare("MRUListEx") != 0)
+                      {
+                        MemoryFileClass memfile();
+                        if (memfile.Open(512, FileClass::WRITE) && file.GetData(memfile))
+                        {
+                          /*
+                           Each entry consists of more than one value but we only want the
+                           first one, which is the filename. This is null-terminated so the
+                           FileClass::ReadString() function will read it and ignore anything
+                           else.
+                           */
+                          String val;
+                          memfile.ReadString(val); // val is passed-in by reference, not value
+                          BookmarkClass note(ext_folder, file.Name());
+                          /*
+                           The Comment() and SetComment() property-accessor functions work
+                           like C# and are inherited from ResultSetClass by BookmarkClass.
+
+                           The ability to set a property in this way is indicated by the
+                           Allow Set column in the EnScript Types tab of the class browser.
+
+                           Properties that aren't marked as constants can be assigned values
+                           provided that the object itself isn't a constant.
+                           */
+                          note.SetComment(val);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
