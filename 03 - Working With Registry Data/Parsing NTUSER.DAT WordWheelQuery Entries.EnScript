@@ -1,0 +1,171 @@
+/*
+ * EnScript to pull Windows Explorer search-box queries from -
+ *
+ * HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery
+ *
+ * Parses NTUSER.DAT files *in the current view*.
+ *
+ * Bookmarks the search terms in the order specified by the MRUListEx value.
+ */
+
+class MainClass
+{
+
+  typedef                                                int[]                                  IntArray;
+
+ /*
+  * Global variables
+  */
+
+  BookmarkClass                                          Folder;
+
+  uint                                                   Counter;
+
+ /*
+  * Entry point
+  */
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      Folder = new BookmarkClass(c.BookmarkRoot(), "Results", NodeClass::FOLDER);
+      ItemIteratorClass iter(c, NORECURSE | NOPROXY, CURRENTVIEW);
+      while (EntryClass e = iter.GetNextEntry())
+      {
+        if (e.Name().Compare("NTUSER.DAT") == 0)
+        {
+          Console.WriteLine("Processing '{0}'", e.ItemPath());
+          RegistryClass reg(e);
+          RegCommandClass cmds();
+          String target_name = "Word Wheel Query";
+          new RegCommandClass(cmds,
+                              target_name,
+                              READKEY,
+                              HKEY_ENTRY_HIVE,
+                              "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\WordWheelQuery",
+                              "",
+                              0,
+                              -1);
+          RegValueClass values();
+          if (reg.Run(cmds, values))
+          {
+            if ((RegValueClass target = values.Find(target_name)) && !target.Error())
+            {
+              if (target.Count())
+              {
+                Process(e, target);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+ /*
+  * Function to process each NTUSER.DAT file
+  */
+
+  void Process(EntryClass reg_file, RegValueClass target)
+  {
+    if (RegValueClass mru_reg_val = target.Find("MRUListEx"))
+    {
+      if (IntArray mru_list = GetMRUList(mru_reg_val))
+      {
+       /*
+        * At this point we know we've got an MRUListEx value
+        * that references at least one search-term.
+        */
+        Console.WriteLine("Got search terms in '{0}'", reg_file.ItemPath());
+        BookmarkClass sub(Folder,
+                          String::Format("{0} - NTUSER.DAT",
+                                         String::FormatInt(Counter++, int::DECIMAL, 0, 6)
+                                        ),
+                          NodeClass::FOLDER);
+        sub.SetComment(reg_file.ItemPath());
+       /*
+        * Bookmark the Registry hive to make it easy to locate using
+        * EnCase's Go To File feature.
+        */
+        BookmarkItemClass bmi(sub);
+        bmi.CopyItemData(reg_file);
+       /*
+        * It's faster to initialize variables once outside of a loop
+        * than to initialize them again and again within the loop.
+        */
+        String val;
+        int index;
+        /*
+         * Use each element in the MRUListEx array to locate
+         * each search-term using NodeClass::Find().
+         */
+        for (uint array_index; array_index < mru_list.Count(); array_index++)
+        {
+          index = mru_list[array_index];
+          if (RegValueClass search_entry = target.Find(index))
+          {
+            MemoryFileClass memfile();
+            if (memfile.Open(512, WRITE))
+            {
+              if (search_entry.GetData(memfile))
+              {
+                if (memfile.CopyToString(val))
+                {
+                  BookmarkClass note(sub, index);
+                  note.SetComment(String::Format("MRU Index: {0}; Search Term: {1}", array_index, val));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+ /*
+  * Function to read the contents of the MRUListEx value into an EnScript
+  * array.
+  *
+  * The MRUListEx value consists of an array of 4-byte signed-integers
+  * terminated by -1.
+  *
+  * Each integer specifies the name of the sibling Registry value that
+  * is next in the list. The most recent search term has index [0].
+  */
+
+  IntArray GetMRUList(RegValueClass mru_reg_val)
+  {
+    IntArray retval;
+    MemoryFileClass memfile();
+    if (memfile.Open(512, WRITE))
+    {
+      if (mru_reg_val.GetData(memfile))
+      {
+       /*
+        * We're only interested in the current MRUListEx
+        * value if it's got more than just the -1 terminator.
+        */
+        if (memfile.GetSize() > 4)
+        {
+          uint array_count = memfile.GetSize() / 4 - 1;
+         /*
+          * Initialize the total size of the array and
+          * each element. This is faster than creating
+          * an empty array and adding each element one
+          * at a time.
+          */
+          retval = new IntArray(array_count, array_count);
+          memfile.Seek(0);
+          int val, index;
+          while ((val = memfile.ReadBinaryInt(4)) != -1)
+          {
+            retval[index++] = val;
+          }
+        }
+      }
+    }
+    return retval; // Will be null if something went wrong
+  }
+}
