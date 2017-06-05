@@ -8,3 +8,5 @@ EnScripts can include other EnScript library files, resource files and .NET asse
 Each script in this repository has been tested/developed using EnCase 7/8 unless specified otherwise.
 
 If you'd like to see an example of how to accomplish a particular thing please feel free to raise an issue and I will look at it as soon as I'm able.
+
+## FAQ
