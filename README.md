@@ -23,3 +23,15 @@ __Q) Can I write EnScripts without EnCase?__
 A) Yes, but you won't be able to compile or run them. One option is to apply to become an EnCase App Central Developer. If you're accepted, you will receive an EnCase licence that can be used for EnScript development. For more details click the following link -
 
 * https://www.guidancesoftware.com/app/become-a-developer
+
+__Q) Is there any documentation available for EnScript?__
+
+A) EnCase ships with an EnScript help file that contains numerous examples. There is also an EnScript class browser accessible from the EnScript editor tab in EnCase itself. An EnScript Fundamentals training manual together with a copy of the EnScript language reference guide is available from the following URL -
+
+* https://guidancesoftware.app.box.com/s/eo6yrgylpg32wu4589n4
+
+__Q) Is there any training available for EnScript?__
+
+A) Yes - 
+
+* https://www.guidancesoftware.com/training/courses/dfir450
