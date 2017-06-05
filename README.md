@@ -1,5 +1,5 @@
 # EnScript-Samples
-This repository is a collection of EnScript code samples for use in the Guidance Software Inc. EnCase application. It is very much a work in progress.
+This repository is a collection of EnScript code samples for use in the [Guidance Software Inc.](http://www.guidancesoftware.com) EnCase application. It is very much a work in progress.
 
 EnScript is a proprietary scripting language with roots in C++. It also has elements of Java and C#.
 
