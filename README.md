@@ -28,7 +28,7 @@ __Q) Is there any documentation available for EnScript?__
 
 A) EnCase ships with an EnScript help file that contains numerous examples. There is also an EnScript class browser accessible from the EnScript editor tab in EnCase itself. An EnScript Fundamentals training manual together with a copy of the EnScript language reference guide is available from the following URL -
 
-* https://guidancesoftware.app.box.com/s/eo6yrgylpg32wu4589n4
+* http://tiny.cc/0zw4ky
 
 __Q) Is there any training available for EnScript?__
 
