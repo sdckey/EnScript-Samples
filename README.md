@@ -34,4 +34,4 @@ __Q) Is there any training available for EnScript?__
 
 A) Yes - 
 
-* https://www.guidancesoftware.com/training/courses/dfir450
+* http://tiny.cc/91w4ky
