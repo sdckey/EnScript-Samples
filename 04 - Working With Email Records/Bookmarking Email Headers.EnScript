@@ -1,0 +1,52 @@
+class MainClass {
+  void Main(CaseClass c) {
+    /*
+     *  Clear console
+     */
+    SystemClass::ClearConsole(1);
+   /*
+    *  Check for case
+    */
+    if (c)
+    {
+    /*
+     *  Declare, instantiate and construct bookmark-folder
+     */
+     BookmarkClass folder(c.BookmarkRoot(), "E-Mail Headers", NodeClass::FOLDER);
+     /*
+      *  Iterate *selected* records in the current view
+      */
+      for (ItemIteratorClass iter(c, NOPROXY | NORECURSE, CURRENTVIEW_SELECTED); RecordClass r = iter.GetNextRecord();)
+      {
+       /*
+        *  Check if current record is an email
+        */
+        if (r.IsEmail())
+        {
+          Console.WriteLine("Processing '{0}'", r.ItemPath());
+         /*
+          *  Declare instantiate and construct item-bookmark as a child of the folder created above
+          */
+          BookmarkItemClass bmi(folder);
+         /*
+          *  Link the bookmark to the source record
+          */
+          bmi.CopyItemData(r);
+         /*
+          *  Try and get the content of the headers field of the email
+          */
+          String headers = r.GetField(DataPropertyClass::PR_TRANSPORT_MESSAGE_HEADERS);
+          if (!headers)
+          {
+            headers = "<Can't get headers>";
+          }
+         /*
+          *  Write the headers to the console and bookmark comment
+          */
+          Console.WriteLine(headers);
+          bmi.SetComment(headers);
+        }
+      }
+    }
+  }
+}
