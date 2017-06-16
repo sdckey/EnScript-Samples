@@ -35,3 +35,7 @@ __Q) Is there any training available for EnScript?__
 A) Yes - 
 
 * http://tiny.cc/91w4ky
+
+__Q) Can I ask for a script example showing how to accomplish a particular task?__
+
+A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code.
