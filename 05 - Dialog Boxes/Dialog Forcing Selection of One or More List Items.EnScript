@@ -1,0 +1,82 @@
+// Forward declaration
+
+class MainClass;
+
+class InstallApps: DialogClass
+{
+  MainClass     Main;
+  ListEditClass _Apps; // The underscore is not necessary - the author uses it to distinguish
+                       // dialog controls.
+
+  InstallApps(MainClass main) : // The colon marks the start of the initializer area, which
+                                // is essential in this case to construct the superclass.
+
+   /*
+    *  Window controls are constructed in the order they're declared, *not*
+    *  the order in which their constructors are called. The constructor of
+    *  the superclass is always called first.
+    */
+
+    Main = main,
+    super(null, "App Selection Dialog"),
+    _Apps(this, "Apps", START, NEXT, 200, 35, 0, main.Apps, ContextClass::CANCHECK)
+    {
+    }
+
+ /*
+  *  As a general rule of thumb, it's necessary to call the parent
+  *  implementation of any virtual function that checks the state
+  *  of a dialog's controls otherwise the dialog may not function
+  *  properly.
+  */
+
+  virtual bool CanClose()
+  {
+    if (!Main.Apps.CountAll(SELECTED, COUNTNODES))
+    {
+      ErrorMessage("You must select one or more apps!");
+      return false;
+    }
+    return super::CanClose();
+  }
+
+ /*
+  *  The following function demonstrates how to disable
+  *  the dialog's OK button unless a list-item is selected.
+  *  Comment-out this function to test the code in the
+  *  CanClose() function.
+  */
+
+  virtual void CheckControls()
+  {
+    EnableClose(Main.Apps.CountAll(SELECTED, COUNTNODES));
+    super::CheckControls();
+  }
+}
+
+
+class MainClass {
+  NameListClass                                                         Apps;
+
+  MainClass() :
+    Apps()
+  {
+    Apps.Parse("App 1,App 2,App 3", ",");
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(SystemClass::SHOWCONSOLE);
+    InstallApps app_dialog(this);
+    if  (app_dialog.Execute() == SystemClass::OK)
+    {
+      Console.WriteLine("Selected apps -\n");
+      foreach (NameListClass app in Apps)
+      {
+        if (app.IsSelected())
+        {
+          Console.WriteLine("\t{0}", app.Name());
+        }
+      }
+    }
+  }
+}
