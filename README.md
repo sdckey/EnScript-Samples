@@ -38,4 +38,4 @@ A) Yes -
 
 __Q) Can I ask for a script example showing how to accomplish a particular task?__
 
-A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code. The idea is to teach *you* how to code EnScript, not to provide an EnScript development service!
+A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code. The idea is to teach *you* how to write EnScript, not to provide an EnScript development service!
