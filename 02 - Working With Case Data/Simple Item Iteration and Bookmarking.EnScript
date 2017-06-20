@@ -1,0 +1,74 @@
+class MainClass {
+  void Main(CaseClass c) {
+
+   /*  Clear the console. SHOWCONSOLE does not actually need to be fully-
+    *  qualified for the reason given below.
+    */
+
+    SystemClass::ClearConsole(SystemClass::SHOWCONSOLE);
+
+ // Check for a case. If not, 'c' will be null (false).
+
+    if (c) {
+
+     /*
+      *  Declare, instantiate and construct a bookmark folder.
+      *
+      *  In this case we're using a shortcut in EnScript called
+      *  'implicit new'. We could have written the following instead -
+      *
+      *    BookmarkClass folder = new BookmarkClass(c.BookmarkRoot(),
+      *                                             "Enscript for wtf",
+      *                                             NodeClass::FOLDER);
+      *
+      *  Note that the BookmarkClass::FOLDER option *should* work but doesn't.
+      */
+
+      BookmarkClass folder(c.BookmarkRoot(), "Results", NodeClass::FOLDER);
+
+     /*
+      * Create a 'for' loop to iterate all the entries in the case using an instance of
+      * ItemIteratorClass. Note that -
+      *
+      *  - NOPROXY returns a linked-in entry, one whose children/ancestors will be
+      *    accessible using inherited NodeClass methods such as NodeClass::Parent().
+      *    That said, dynamic properties such as signature and hash won't be calculated.
+      *  - Other iteration-modes can be passed-in as the third contructor parameter, e.g.
+      *    CURRENTVIEW_SELECTED, TAGGED, etc. ALL is the default.
+      *  - Enumerated values (e.g. NOPROXY, CURRENTVIEW_SELECTED, TAGGED, ALL, etc.) don't need
+      *    to be fully-qualified provided that they exist in the same namespace as the function
+      *    into which they're being passed.
+      *  - ItemIteratorClass::GetNextRecord() can be used to get records instead of entries.
+      *  - ItemIteratorClass::GetNextItem() can be used to get entries and records as they
+      *    both inherit from ItemClass.
+      *  - ItemClass objects can be typecast back to their dynamic type. If typecasting to
+      *    a record fails, one knows that the object is an entry. Note that some records
+      *    are also entries!
+      */
+
+      for (ItemIteratorClass iter(c, NOPROXY); EntryClass entry = iter.GetNextEntry();) {
+
+       /*
+        *  Process files with a case-insensitive 'jpg' extension and a size greater than
+        *  10k. Be cautious using '==' to compare strings as it performs a binary comparison.
+        */
+
+        if (entry.Extension().Compare("jpg") == 0 && entry.LogicalSize() > 10 * 1024) {
+          Console.WriteLine("Bookmarking '{0}'", entry.ItemPath());
+
+         /*  Bookmark the entry(item). Note that in EnCase 7/8 a bookmark is not the actual
+          *  item, it's a separate item linked to it, one with the same metadata. The
+          *  BookmarkItemClass::CopyItemData() method (which is inherited from ResultClass)
+          *  copies the metadata and makes the link, which enables use of the Go To File
+          *  feature to locate the original item. An instance of ItemCacheClass can be used
+          *  to resolve a bookmark programatically.
+          */
+
+          BookmarkItemClass bic(folder);
+          bic.CopyItemData(entry);
+          bic.SetComment("This is a comment.");
+        }
+      }
+    }
+  }
+}
