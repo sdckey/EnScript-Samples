@@ -1,0 +1,145 @@
+class MainClass;
+
+class MyListChooserDialogClass : DialogClass
+{
+  MainClass                                                        M;
+  ContextClass                                                     Context;
+  StringEditClass                                                  _SearchTerm;
+  ListEditClass                                                    _Agencies;
+  StaticTextClass                                                  _Instructions;
+
+  MyListChooserDialogClass(MainClass m) :
+    super(null, m.ScriptName),
+    M = m,
+    Context(null, "", 0, M.Agencies),
+    _SearchTerm(this, "Search Term", START, START, 300, DEFAULT, 0, M.SearchTerm, -1, 0),
+    _Agencies(this, "Agencies", START, NEXT, 300, 150, 0, null, 0),
+    _Instructions(this,
+                  "Type something in the search box to filter the list. "
+                  "Hitting ENTER whilst focused on the\nsearch box will "
+                  "return the first highlighted list-item. If that isn't "
+                  "the one you want, TAB to\nthe list, use UP and DOWN "
+                  "to select the desired item and hit ENTER. You can "
+                  "also double-\nclick an item in the list to select it.",
+                  START, NEXT, DEFAULT, DEFAULT, 0)
+  {
+    ContextClass::ColumnClass columns();
+    new ContextClass::ColumnClass(columns, "n", 0, 1);
+    Context.SetColumns(columns);
+
+  }
+
+  virtual void Setup()
+  {
+    super::Setup();
+    UpdateContext();
+
+  }
+
+  virtual void CheckControls()
+  {
+   /*
+    *  If there are no nodes in the context then the
+    *  last node to be selected gets returned by
+    *  ListEditClass::GetValue(). If no node has
+    *  been selected then the first node in the list
+    *  is returned.
+    *
+    *  This is why the next line of code checks
+    *  the number of nodes in the context as well
+    *  as the value returned by ListEditClass::GetValue().
+    *  The thinking behind this is that the node
+    *  returned by ListEditClass::GetValue() cannot
+    *  be correct if there are no nodes in the context.
+    *
+    *  This seems little strange to me, but (a) it works
+    *  and (b) I can't find another way of doing it.
+    */
+
+    EnableClose(Context.Count() && _Agencies.GetValue());
+    super::CheckControls();
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    super::ChildEvent(event);
+    if (_SearchTerm.Matches(event))
+    {
+      UpdateContext();
+    }
+    if (_Agencies.Matches(event) && event.Type() == CHILDSELECTNODE)
+    {
+      Output();
+      Destroy(SystemClass::OK);
+    }
+  }
+
+  void UpdateContext()
+  {
+    Context.SetCount(0);
+    if (_SearchTerm.GetText())
+    {
+      foreach (NameListClass agency in M.Agencies)
+      {
+        if (agency.Name().Contains(_SearchTerm.GetText()))
+        {
+          Context.AddNode(agency);
+        }
+      }
+    }
+    else
+    {
+      Context.SetNodes(M.Agencies);
+    }
+    Context.Sort();
+    _Agencies.SetContext(Context);
+    _Agencies.SetValue(Context.GetNode(0));
+  }
+}
+
+class MainClass {
+
+  String                                                           ScriptName,
+                                                                   SearchTerm;
+  NameListClass                                                    Agencies,
+                                                                   ChosenAgency;
+
+  MainClass() :
+    ScriptName("Dynamic Search Demo"),
+    Agencies()
+  {
+    Agencies.Parse("Life Extension,"
+                   "Silver Shamrock Novelties,"
+                   "Brawndo,"
+                   "Parallax Corp.,"
+                   "Mitch and Murray,"
+                   "Megadodo Publications,"
+                   "Multi National United,"
+                   "Crimson Permanent Assurance,"
+                   "Spectacular Optical,"
+                   "Soylent Corporation,"
+                   "Resources Development Administration,"
+                   "Pierce and Pierce,"
+                   "Adventureland,"
+                   "Duke & Duke,"
+                   "Lunar Industries",
+                   ",");
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    AccessStorage();
+    MyListChooserDialogClass dialog(this);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      AccessStorage(StorageClass::WRITE);
+      SystemClass::Message(ICONINFORMATION, ScriptName, String::Format("You chose '{0}'.", dialog._Agencies.GetValue().Name()));
+    }
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(ScriptName, options);
+    storage.Value("SearchTerm", SearchTerm);
+  }
+}
