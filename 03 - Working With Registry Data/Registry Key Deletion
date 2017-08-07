@@ -1,11 +1,3 @@
-/*
- *  This script demonstrates Registry key deletion. It can only be used
- *  with the local machine, and remote nodes when remediation has been
- *  enabled on the Endpoint Investigator SAFE.
- *
- *  Use this script at your own risk!!!
- */
-
 class MainClass {
   void Main() {
     SystemClass::ClearConsole(1);
@@ -26,14 +18,21 @@ class MainClass {
     RegValueClass values();
     if (reg.Run(commands, values))
     {
-      if ((RegValueClass val = values.Find(moniker)) && !val.Error())
+      if ((RegValueClass val = values.Find(moniker)))
       {
-        Console.WriteLine("Key deleted!");
+        if (!val.Error())
+        {
+          Console.WriteLine("Key deleted!");
+        }
+        else
+        {
+          Console.WriteLine(val.ValueText());
+        }
       }
-      else
-      {
-        Console.WriteLine(val.ValueText());
-      }
+    }
+    else
+    {
+      Console.WriteLine("Can't run Registry command!");
     }
   }
 }
