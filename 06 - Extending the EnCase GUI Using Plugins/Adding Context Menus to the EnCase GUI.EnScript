@@ -1,0 +1,114 @@
+/*
+ *  This EnScript demonstrates how to add context-menus to EnCase.
+ *
+ *  If the highlighted entry is a PST or EDB file, the script will enable
+ *  a context sub-menu called "Process e-mail container". An option on
+ *  the sub-menu will bookmark the entry and present a feedback message
+ *  specifying the entry's type (PST or EDB) and whether it was selected
+ *  (blue-checked).
+
+ *  To test this script, compile and then run it making sure to use the Run
+ *  option on the EnScript menu. This will activate the plugin, which will
+ *  continue running till EnCase closes. To activate the plugin whenever
+ *  EnCase starts, copy the script into either the user's EnCase\EnScript\Main
+ *  folder or the EnScript\Main folder in the main EnCase program folder.
+ *
+ *  Note that plugins run in the foreground thread and will block EnCase
+ *  while active. If you need to perform extensive processing, use
+ *  SystemClass::RunScript() to run another script that will handle the
+ *  processing in the background. Alternatively, present a threaded process-
+ *  dialog so the user knows that something is happening.
+ */
+
+class MainClass: ApplicationClass
+{
+
+  enum      MailTypes
+            {
+              NONE,
+              PST,
+              EDB
+            }
+
+  MenuClass MenuEmailProcess,
+            MenuEDBProcess,
+            MenuPSTProcess;
+
+  MainClass():
+    ApplicationClass(null, "Context Menu Example"),
+    MenuEmailProcess(MenuList, "Process e-mail container", 0, 0, IconClass::MAILTYPE),
+    MenuEDBProcess(MenuList, "Process EDB file", 0, 0, IconClass::SHARED),
+    MenuPSTProcess(MenuList, "Process PST file", 0, 0, IconClass::PST)
+  {
+  }
+
+  void ShowMessage(HandlerClass::NodeEventClass event)
+  {
+    if (EntryClass entry = EntryClass::TypeCast(event.Node)) // To get the root of the list,
+    {                                                        // use event.Root
+      if (MailTypes type = IsEmailContainer(entry))
+      {
+        if (CaseClass c = entry.GetCase())
+        {
+          BookmarkClass folder = c.BookmarkRoot().Find("Mail Containers");
+          if (!folder)
+          {
+            folder = new BookmarkClass(c.BookmarkRoot(), "Mail Containers", NodeClass::FOLDER);
+          }
+          BookmarkItemClass bmi(folder);
+          bmi.CopyItemData(entry);
+          bmi.SetComment(String::Format("{0} file", MailTypes::SourceText(type)));
+          String message = String::Format("You chose {0} {1} file.\n\nFile has been bookmarked.",
+                                          entry.IsSelected() ? "a selected" : "an unselected",
+                                          MailTypes::SourceText(type));
+          SystemClass::Message(SystemClass::ICONINFORMATION, "Information", message);
+        }
+      }
+    }
+  }
+
+  virtual void BuildNodeMenu(MenuBuildClass menu, HandlerClass::NodeEventClass event)
+  {
+    WindowClass    w = event.Window;
+    if ((EntryClass entry = EntryClass::TypeCast(event.Node)))
+    {
+      MailTypes t = IsEmailContainer(entry);
+
+      uint subMenuOptions = (t) ? 0 : MenuClass::DISABLED,
+           pstOptions     = (t == PST) ? 0 : MenuClass::DISABLED,
+           edbOptions     = (t == EDB) ? 0 : MenuClass::DISABLED;
+
+      MenuBuildClass b = menu.AddMenu(w, MenuEmailProcess, subMenuOptions);
+
+      b.AddMenu(w, MenuEDBProcess, edbOptions, MenuBuildClass::MENUSUB);
+      b.AddMenu(w, MenuPSTProcess, pstOptions, MenuBuildClass::MENUSUB);
+    }
+  }
+
+  MailTypes IsEmailContainer(EntryClass e)
+  {
+    MailTypes retval = NONE;
+    if (e.Extension().Compare("pst") == 0)
+    {
+      retval = PST;
+    }
+    else if (e.Extension().Compare("edb") == 0)
+    {
+      retval = EDB;
+    }
+    return retval;
+  }
+
+  virtual void NodeMenuEvent(WindowClass::MenuEventClass m, HandlerClass::NodeEventClass event)
+  {
+    if (m.Matches(MenuEDBProcess) || m.Matches(MenuPSTProcess))
+    {
+      ShowMessage(event);
+    }
+  }
+
+  void Main()
+  {
+    SystemClass::SetApplicationHandler(this);
+  }
+}
