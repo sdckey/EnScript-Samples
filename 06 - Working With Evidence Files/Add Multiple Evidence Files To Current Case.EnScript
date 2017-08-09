@@ -1,0 +1,72 @@
+/*
+ *  This script reads a newline-delimited list of evidence-file paths
+ *  from a text file and loads each associated evidence file into the
+ *  current case.
+ */
+
+class MainClass {
+
+  NameListClass                                     Extensions;
+
+  MainClass() :
+    Extensions()
+  {
+    Extensions.Parse("L01,Lx01,E01,Ex01", ",");
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+
+    // Check for active case
+
+    if (c)
+    {
+      String text_path;
+      if (SystemClass::PathDialog(text_path, "Choose list file", "txt", "Text Files\t*.txt", OPEN))
+      {
+        LocalFileClass input();
+        if (input.Open(text_path, TEXTCRLF))
+        {
+          String text_list;
+          input.ReadString(text_list);
+          NameListClass paths();
+          if (paths.Parse(text_list, "\n"))
+          {
+            foreach (NameListClass path in paths)
+            {
+              String extension = path.Name().GetFileExt();
+              if (Extensions.Find(extension))
+              {
+                if (LocalMachine.PathExists(path.Name()))
+                {
+                  Console.WriteLine("Processing '{0}'.", path.Name());
+                  EvidenceClass ev();
+                  ev.SetOpenMode(OPENEVIDENCEFILE);
+                  new EvidencePathClass(ev.EvidencePathRoot(), path.Name());
+                  EvidenceOpenClass ev_open();
+                  ev_open.SetMountOptions(MOUNTFROMCACHE | MOUNTTOCACHE);
+                  if (ev.AddToCase(c, ev_open))
+                  {
+                    Console.WriteLine("Successfully added '{0}' to case.", path.Name());
+                  }
+                  else
+                  {
+                    Console.WriteLine("WARNING - Couldn't add evidence to case: {0}", path.Name());
+                  }
+                }
+                else
+                {
+                  Console.WriteLine("WARNING - File doesn't exist: {0}", path.Name());
+                }
+              }
+              else
+              {
+                Console.WriteLine("WARNING - Skipping file with invalid extension: {0}", path.Name());
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

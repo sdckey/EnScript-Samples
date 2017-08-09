@@ -1,0 +1,78 @@
+ /*
+  *
+  * EnScript to identify the read/unread status of MAPI e-mail.
+  *
+  * Processes all records in the case.
+  *
+  * Output is to the console and a result-set. The comment of
+  * each result indicates whether the associated message is
+  * read/unread.
+  *
+  * You should test this script to your own satisfaction before
+  * using it in a production/investigative environment.
+  */
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      ResultSetClass results();
+      if (results.Open(c.TemporaryFolder()))
+      {
+        ItemIteratorClass iter(c, NOPROXY);
+        while (RecordClass r = iter.GetNextRecord())
+        {
+          if (IsMAPIEMail(r))
+          {
+            Console.WriteLine("MAPI message '{0}' {1}.", r.Name(), IsRead(r) ? "is read" : "is not read");
+            String comment = IsRead(r) ? "Read" : "Unread";
+            ResultSetClass::DataClass d();
+            ResultClass result();
+            result.CopyItemData(r);
+            result.SetComment(comment);
+            d.Item = result;
+            results.Add(d) && results.Flush();
+          }
+        }
+        results.Close();
+        results.AddToCase(c, "Filtered Mail");
+      }
+    }
+  }
+
+  bool IsMAPIEMail(RecordClass r)
+  {
+    bool retval;
+    if (r.IsEmail())
+    {
+      if (variant email_type = r.GetField(DataPropertyClass::PR_EMAIL_TYPE))
+      {
+        int email_type_val = email_type;
+        switch (email_type_val)
+        {
+          /*
+           * We want MAPI e-mail only.
+           */
+          case DataPropertyClass::TYPE_PST:
+          case DataPropertyClass::TYPE_EXCHANGE:
+          case DataPropertyClass::TYPE_EDB:
+          case DataPropertyClass::TYPE_MSG:
+            retval = true;
+        }
+      }
+    }
+    return retval;
+  }
+
+  bool IsRead(RecordClass r)
+  {
+    bool retval;
+    if (variant message_flags = r.GetField(DataPropertyClass::PR_MESSAGE_FLAGS))
+    {
+      int message_flags_val = message_flags;
+      retval = message_flags_val & 0x01;
+    }
+    return retval;
+  }
+}

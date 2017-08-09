@@ -1,0 +1,127 @@
+class MainClass;
+
+class MyReportWindowClass : ReportWindowClass
+{
+  MainClass                  M;
+
+  MyReportWindowClass(WindowClass parent, const String &title, int x, int y,
+                      int width, int height, ulong style, uint options = 0,
+                      MainClass m = null) :
+    M = m,
+    super(parent, title, x, y, width, height, style, options)
+  {
+
+  }
+
+  virtual void BuildDocument(ExportClass export)
+  {
+    if (export.Open(this, "Help"))
+    {
+      export.Write(M.Note);
+      export.Close();
+    }
+  }
+}
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                      M;
+
+  ComboEditClass                                 _Fruit;
+
+  ListEditClass                                  _Vegetables;
+
+  MyReportWindowClass                            _Note;
+
+  MyDialogClass(MainClass m):
+    M = m,
+    super(null, "My Dialog"),
+    _Fruit(this, "Choose a fruit", START, START, 75, DEFAULT, 0, M.Fruit, 0),
+    _Vegetables(this, "Choose a vegetable", START, NEXT, 75, 35, 0, M.Vegetables, 0),
+    _Note(this, "", NEXT, 8, 190, 71, 0, CONTROLVIEW)
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_Vegetables.Matches(event) && event.Type() == CHILDSELECTNODE)
+    {
+      String error_message;
+      if (CheckValues(error_message))
+      {
+        Destroy(SystemClass::OK);
+      }
+      else
+      {
+        ErrorMessage(error_message);
+      }
+    }
+    super::ChildEvent(event);
+  }
+
+  bool CheckValues(String &error_message)
+  {
+    bool retval = true;
+    if (retval && !_Fruit.GetValue())
+    {
+      error_message = "You must choose a fruit!";
+      retval = false;
+    }
+    if (retval && _Vegetables.GetValue() == M.Vegetables.FirstChild())
+    {
+      error_message = "You must choose a vegetable!";
+      retval = false;
+    }
+    return retval;
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = super::CanClose();
+    String error_message;
+    if (retval && !CheckValues(error_message))
+    {
+      ErrorMessage(error_message);
+      retval = false;
+    }
+    return retval;
+  }
+}
+
+class MainClass {
+
+  static String                                  Note = "In addition to clicking OK, the user can "
+                                                        "close the dialog by selecting a fruit and "
+                                                        "then double-clicking a vegetable.\n\n"
+
+                                                        "Presenting a list with checkboxes is misleading "
+                                                        "if the user will only be allowed to select one node. "
+                                                        "It would also require the user to deselect one "
+                                                        "node before changing their selection to another one. "
+                                                        "Either that or extra code would be needed to do that "
+                                                        "for them. It's easier and far more straightforward "
+                                                        "for the user to select a node simply by highlighting "
+                                                        "it.";
+
+  NameListClass                                  Fruit,
+                                                 Vegetables;
+
+  MainClass() :
+    Fruit(),
+    Vegetables()
+  {
+    Fruit.Parse("Apples,Oranges,Bananas", ",");
+    Vegetables.Parse("<None>,Carrots,Peas,Potatoes", ",");
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(SHOWCONSOLE);
+    MyDialogClass dialog(this);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      Console.WriteLine("Chosen fruit: {0}.", dialog._Fruit.GetValue().Name());
+      Console.WriteLine("Chosen vegetable: {0}.", dialog._Vegetables.GetValue().Name());
+    }
+  }
+}

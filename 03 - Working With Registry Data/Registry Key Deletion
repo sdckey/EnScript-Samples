@@ -1,0 +1,38 @@
+class MainClass {
+  void Main() {
+    SystemClass::ClearConsole(1);
+    
+    RegistryClass reg(LocalMachine); // LocalMachine is a ConnectionClass object representing
+                                     // a connection to the local machine. It is useful for
+                                     // testing.
+    RegCommandClass commands();
+
+   /*
+    * The following command will delete an entire key and its contents. It will not work on a
+    * remote node unless remediation has been enabled on the Endpoint Investigator SAFE. 
+    * Always test commands like this using a key one deeper than that which you're prepared to lose!!!
+    */
+    
+    String moniker("Testing Key Deletion");
+    new RegCommandClass(commands, moniker, DELETEKEY, HKEY_LOCAL_MACHINE, "Software\\Test Key\\Target Key", "", 0, 0);
+    RegValueClass values();
+    if (reg.Run(commands, values))
+    {
+      if ((RegValueClass val = values.Find(moniker)))
+      {
+        if (!val.Error())
+        {
+          Console.WriteLine("Key deleted!");
+        }
+        else
+        {
+          Console.WriteLine(val.ValueText());
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("Can't run Registry command!");
+    }
+  }
+}
