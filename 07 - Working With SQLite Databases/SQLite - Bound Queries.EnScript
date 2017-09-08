@@ -1,0 +1,64 @@
+class MainClass {
+
+  static const String                                  CreateTableQuery = "CREATE TABLE Entries (Name TEXT, Description TEXT, Path TEXT, LogicalSize INT)",
+                                                       InsertQuery      = "INSERT INTO Entries VALUES ($Name, $Description, $Path, $LogicalSize)",
+                                                       CreateIndexQuery = "CREATE INDEX idx_path ON Entries (Path)";
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      String dbPath = String::Format("{0}\\Test.db", c.ExportFolder());
+      if (SystemClass::PathDialog(dbPath, "Choose DB path", "db", "Database Files (*.db)\t*.db", CREATE))
+      {
+        MemoryFileClass dbFile();
+        if (dbFile.Open(100 * 1024 * 1024, FileClass::WRITE)) // Faster to construct the DB in memory and then copy
+        {                                                     // it to disk.
+          SQLiteClass db();
+          if (db.Open(dbFile, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE))
+          {
+            Console.WriteLine("Database created at '{0}'", dbPath);
+            SQLiteClass::CommandClass cmd();
+            if (db.CreateCommand(cmd))
+            {
+              TraceClass::Debug("\"Command bound to database\"");
+              if (cmd.ExecuteNonQuery(CreateTableQuery))
+              {
+                TraceClass::Debug("\"Table created\"");
+                if (cmd.ExecuteNonQuery(CreateIndexQuery))
+                {
+                  TraceClass::Debug("\"Index created\"");
+                  if (cmd.CreateDataBinding(InsertQuery))
+                  {
+                    TraceClass::Debug("\"Insert query bound to command\"");
+                    ItemIteratorClass iter(c, NOPROXY | NORECURSE, ALL);
+                    while (EntryClass e = iter.GetNextEntry())
+                    {
+                      if (cmd.Bind("$Name", e.Name()) &&
+                          cmd.Bind("$Description", e.Description()) &&
+                          cmd.Bind("$Path", e.ItemPath()) &&
+                          cmd.Bind("$LogicalSize", e.LogicalSize()))
+                      {
+                        if (cmd.ExecuteNonQuery())
+                        {
+                          Console.WriteLine("Record for '{0}' added to database.", e.Name());
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            db.Close();
+          }
+          dbFile.Seek(0);
+          LocalFileClass final();
+          if (final.Open(dbPath, FileClass::WRITE))
+          {
+            final.WriteBuffer(dbFile);
+          }
+          dbFile.Close();
+        }
+      }
+    }
+  }
+}
