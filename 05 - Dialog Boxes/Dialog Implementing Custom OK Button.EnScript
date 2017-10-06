@@ -1,0 +1,52 @@
+class MainClass;
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                        M;
+  ButtonClass                                      _MyOKButton;
+  StringEditClass                                  _Text;
+  
+  MyDialogClass(MainClass m) :
+    super(null, "My Dialog"),
+    M = m,
+    _MyOKButton(this, "My OK Button", 120, START, DEFAULT, DEFAULT, 0),
+    _Text(this, "Enter some text", START, NEXT, 300, DEFAULT, 0, M.Text, -1, REQUIRED)
+  {
+    OKButton.SetVisible(false);  
+    CancelButton.SetVisible(false);
+  }
+  
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_MyOKButton.Matches(event))
+    {
+      Output();
+      Destroy(SystemClass::OK);
+    } 
+    super::ChildEvent(event);
+  }
+  
+  virtual void CheckControls()
+  {
+    _MyOKButton.Enable(_Text.GetText());
+  }
+}
+
+class MainClass {
+  
+  String                                           Text;
+    
+  void Main() {
+    SystemClass::ClearConsole(1);
+    MyDialogClass dialog(this);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      Console.WriteLine(Text);
+      SystemClass::Message(ICONINFORMATION, "Finished", String::Format("The text you entered was '{0}'.", Text));
+    }
+    else
+    {
+      SystemClass::Message(ICONINFORMATION, "Cancelled", "Script cancelled.");
+    }
+  }
+}
