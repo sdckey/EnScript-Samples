@@ -1,7 +1,10 @@
  /*
   *  This script demonstrates the retrieval of files (in this case
-  *  EVTX log files) using an Endpoint Investigator machine
-  *  connection.
+  *  EVTX log files) using an Endpoint Security machine connection.
+  *
+  *  It's unlikely that this script will work with Endpoint
+  *  Investigator because remediation needs to be enabled on the
+  *  SAFE.
   *
   *  Target files are accessed using logical paths, as visible on the
   *  endpoint. This is much faster than having the agent read devices
@@ -10,7 +13,7 @@
   *  The script uses a connection to the local machine, but its code
   *  can be easily incorporated into the EnScript help-file's
   *  ConnectionClass example so as to retrieve files from remote
-  *  machines. *This requires remediation to be enabled on the SAFE*.
+  *  machines.
   *
   *  It may also be possible to use ConnectionClass::CopyFile() to copy
   *  files to a remote network share, but this would require the target
