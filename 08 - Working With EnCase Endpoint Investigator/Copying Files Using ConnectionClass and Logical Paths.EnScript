@@ -1,0 +1,116 @@
+ /*
+  *  This script demonstrates the retrieval of files (in this case
+  *  EVTX log files) using an Endpoint Investigator machine
+  *  connection.
+  *
+  *  Target files are accessed using logical paths, as visible on the
+  *  endpoint. This is much faster than having the agent read devices
+  *  (disks/volumes) directly using DeviceInfoClass.
+  *
+  *  The script uses a connection to the local machine, but its code
+  *  can be easily incorporated into the EnScript help-file's
+  *  ConnectionClass example so as to retrieve files from remote
+  *  machines. *This requires remediation to be enabled on the SAFE*.
+  *
+  *  It may also be possible to use ConnectionClass::CopyFile() to copy
+  *  files to a remote network share, but this would require the target
+  *  node's machine-account to have write-access to that share (the EI
+  *  servlet usually runs in the System account).
+  */
+
+class DemoClass
+{
+  uint                Index;
+  ConnectionClass     Conn;
+  String              Output_Folder,
+                      Input_Folder;
+
+  DemoClass(ConnectionClass Conn, const String &input_folder, const String &output_folder) :
+    Conn = Conn,
+    Input_Folder = input_folder,
+    Output_Folder = output_folder
+  {
+
+  }
+
+  void Recurse()
+  {
+    Recurse(Input_Folder);
+  }
+
+  void Recurse(const String &path)
+  {
+    DirRootClass droot(Conn);
+    DirectoryClass root();
+    if (droot.GetListing(path, root))
+    {
+      foreach (DirectoryClass child in root)
+      {
+        String child_path = String::Format("{0}\\{1}", path, child.Name());
+        if (child.Extension().Compare("evtx") == 0)
+        {
+          if (child.LogicalSize())
+          {
+            Console.WriteLine("Processing '{0}'", child_path);
+            String error_message;
+            if (Extract(child.Name(), child_path, Conn, error_message))
+            {
+              Console.WriteLine("Successfully extracted '{0}' to '{1}'.", child.Name(), error_message);
+            }
+            else
+            {
+              Console.WriteLine("Unable to extract '{0}'.", child_path);
+            }
+          }
+        }
+        else if (child.IsFolder())
+        {
+          Recurse(child_path);
+        }
+      }
+    }
+  }
+
+  bool Extract(const String &name, const String &path, ConnectionClass Conn, String &error_message)
+  {
+    bool retval;
+    HostFileClass input(Conn);
+    if (input.Open(path))
+    {
+      String output_path = String::Format("{0}\\{1} - {2}", Output_Folder, String::FormatInt(Index++, int::DECIMAL, 0, 6), name);
+      LocalFileClass output();
+      if (output.Open(output_path, WRITE))
+      {
+        output.WriteBuffer(input);
+        error_message = output_path;
+        retval = true;
+      }
+      else
+      {
+        error_message = String::Format("Can't open output_path at {0}.", output_path);
+      }
+    }
+    else
+    {
+      error_message = String::Format("Can't open file-data for '{0}'.", path);
+    }
+    return retval;
+  }
+}
+
+class MainClass {
+  void Main() {
+    SystemClass::ClearConsole(1);
+    String output_folder;
+    if (SystemClass::FolderDialog(output_folder, "Choose output folder"))
+    {
+      ConnectionClass conn = LocalMachine;
+
+      // Will need to test the actual path to the event logs folder; it may
+      // not be as shown here (the Windows folder could be located elsewhere).
+
+      DemoClass demo(conn, "C:\\Windows\\System32\\winevt\\Logs", output_folder);
+      demo.Recurse();
+    }
+  }
+}
