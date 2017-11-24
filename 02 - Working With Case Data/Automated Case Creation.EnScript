@@ -1,0 +1,142 @@
+/*
+ *  This script demonstrates automatic case creation.
+ *
+ *  The script will create a case, set some case
+ *  information items, and load any number of
+ *  evidence files specified by the user. Images
+ *  having a JPEG or JPG file-extension will be
+ *  bookmarked in the process.
+ *
+ *  The user will need to wait for each evidence file
+ *  to be loaded before another can be selected.
+ *
+ *  After the desired evidence files have been selected,
+ *  click Cancel in the file-chooser dialog to have
+ *  EnCase save the case and load it into view.
+ *
+ *  Tested under EnCase 8.05.00.182.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Curriculum Developer
+ *  OpenText (UK Office)
+ *
+ *  24th November 2017
+ *
+ */
+
+class MainClass {
+
+  static const String BaseCaseFolder   = "C:\\My Cases",     // Will be created automatically
+                                                             // if it doesn't exist.
+                      CaseName         = "Test Case",
+                      ExtraCaseFolders = "Evidence,Reports", // Evidence-cache folder will be
+                                                             // created automatically by the
+                                                             // script - see below.
+                      JPGExtensions    = "jpg,jpeg";
+
+  NameListClass       JPGExtensionList;
+
+  MainClass() :
+    JPGExtensionList()
+  {
+    JPGExtensionList.Parse(JPGExtensions, ",");
+  }
+
+  void Main()
+  {
+    if (CreateCase())
+    {
+      SystemClass::Message(ICONINFORMATION, "Success", "Case created and opened successfully.");
+    }
+  }
+
+  uint GetEvidencePath(String &evidence_path)
+  {
+    return SystemClass::PathDialog(evidence_path, "Choose evidence to load (press cancel to proceed)", "", "Evidence Files\t*.E01;*.Ex01;*.L01;*.Lx01", OPEN);
+  }
+
+  bool CreateCase()
+  {
+    String case_folder = String::Format("{0}\\{1}", BaseCaseFolder, CaseName);
+    if (LocalMachine.CreateFolder(case_folder, NOTIFYSHELL | CREATEFOLDERALL))
+    {
+      if (CreateExtraCaseFolders(case_folder))
+      {
+        CaseClass c(null, CaseName);
+        c.SetUseBaseFolder(true);
+        c.SetPrimaryEvFolder(String::Format("{0}\\EvidenceCache", case_folder));
+        String case_file_path = String::Format("{0}\\{1}.case", case_folder, CaseName);
+        new CaseInfoClass(c.CaseInfoRoot(), "Examiner", 0, "Simon Key");
+        new CaseInfoClass(c.CaseInfoRoot(), "Company", 0, "OpenText");
+        new CaseInfoClass(c.CaseInfoRoot(), "Department", 0, "Curriculum Development");
+        String evidence_path;
+        if (GetEvidencePath(evidence_path))
+        {
+          BookmarkFolderClass folder(c.BookmarkRoot(), "JPG Files", NodeClass::FOLDER);
+          do
+          {
+            EvidenceOpenClass evopen();
+            evopen.SetMountOptions(MOUNTTOCACHE | MOUNTFROMCACHE);
+            EvidenceClass ev();
+            new EvidencePathClass(ev.EvidencePathRoot(), evidence_path);
+            ev.SetOpenMode(OPENEVIDENCEFILE);
+            if (ev.AddToCase(c, evopen))
+            {
+              if (DeviceClass d = ev.GetDevice(c, evopen))
+              {
+                if (EntryClass entry_root = d.GetRootEntry())
+                {
+                  BookmarkFolderClass sub(folder, d.Name(), NodeClass::FOLDER);
+                  forall (EntryClass e in entry_root)
+                  {
+                    if (JPGExtensionList.Find(e.Extension()) && !e.IsOverwritten())
+                    {
+                      BookmarkImageClass bi(sub);
+                      bi.CopyItemData(e);
+                    }
+                  }
+                }
+              }
+            }
+          }
+          while (GetEvidencePath(evidence_path));
+        }
+        if (c.Write(case_file_path))
+        {
+          c = new CaseClass(GlobalDataClass::CaseRoot());
+          return c.Read(case_file_path);
+        }
+      }
+    }
+    return false;
+  }
+
+  bool CreateExtraCaseFolders(const String &case_folder)
+  {
+    NameListClass sub_folders();
+    sub_folders.Parse(ExtraCaseFolders, ",");
+
+   /*
+    * The evidence-cache folder must exist before
+    * evidence is loaded into the case and
+    * bookmarked. We can't wait for it to be
+    * created when EnCase writes the case to
+    * disk; we need it before then.
+    */
+
+    if (!sub_folders.Find("EvidenceCache"))
+    {
+      new NameListClass(sub_folders, "EvidenceCache");
+    }
+    foreach (NameListClass sub_folder in sub_folders)
+    {
+      if (!LocalMachine.CreateFolder(String::Format("{0}\\{1}", case_folder, sub_folder.Name())))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+}
