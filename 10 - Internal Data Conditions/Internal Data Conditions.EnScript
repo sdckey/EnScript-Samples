@@ -1,0 +1,190 @@
+/*
+ *  This script reads records from Firefox places.sqlite files in
+ *  the current case.
+ *
+ *  The title, URL, last_visit_date and visit_count fields from
+ *  records in the moz_places table are used to construct
+ *  instances of a custom data-class that inherits the linked-
+ *  list data functionality of NameListClass and its super-class,
+ *  NodeClass.
+ *
+ *  The SQLite records read from a given database could, in theory,
+ *  be stored as a list of custom data-objects, but in this
+ *  example the parent/child functionality inherited from
+ *  NodeClass is not used: the data-object created to represent
+ *  each record is only kept for as long as it's needed, which incurs
+ *  a minimal memory overhead.
+ *
+ *  The data-class objects are filtered by a custom data-condition,
+ *  which is set using a very simple GUI, one that only has a button.
+ *
+ *  The condition set by the user is persisted through the use of
+ *  StorageClass.
+ *
+ *  Filtered objects are written to the console.
+ */
+
+class MainClass;
+
+class FirefoxPlacesRecordClass : NameListClass
+{
+  property String             Title,
+                              URL;
+
+  property uint               VisitCount;
+
+  ulong                       LastVisitDateMicroseconds;
+
+  property DateClass          LastVisitDate;
+
+  FirefoxPlacesRecordClass(const String &title,
+                           const String &url,
+                           uint visit_count,
+                           ulong last_visit_date_microseconds) :
+    super(),
+    Title = title,
+    URL = url,
+    VisitCount = visit_count,
+    LastVisitDateMicroseconds = last_visit_date_microseconds
+
+  {
+    LastVisitDate.SetUnix(last_visit_date_microseconds / 1000000);
+  }
+
+  void GetInfo()
+  {
+    Console.Write("{0}\t", Title);
+    Console.Write("{0}\t", URL);
+    Console.Write("{0}\t", VisitCount);
+    Console.Write("{0}\n", LastVisitDate.GetString());
+  }
+
+}
+
+class FilterDialogClass : DialogClass
+{
+  MainClass                   M;
+  ButtonClass                 ButtonSetFilter;
+
+  FilterDialogClass(MainClass m) :
+    super(null, "Internal Data Conditions"),
+    M = m,
+    ButtonSetFilter(this, "Set Filter", START, START, DEFAULT, DEFAULT, 0)
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (ButtonSetFilter.Matches(event))
+    {
+      M.Condition.ShowEditDialog(this);
+    }
+    super::ChildEvent(event);
+  }
+}
+
+class MainClass
+{
+
+  static const String Query = "select title, url, last_visit_date, visit_count "
+                              "from moz_places where last_visit_date is not "
+                              "null order by last_visit_date";
+
+  ProgramClass        Program;
+
+  ConditionClass      Condition;
+
+  MainClass() :
+    Program(),
+    Condition(null, "Firefox Places Condition")
+  {
+    Condition.SetClassName("FirefoxPlacesRecordClass");
+    Condition.HideField(FirefoxPlacesRecordClass::property(Name));
+    Condition.HideField(FirefoxPlacesRecordClass::property(FullPath));
+    Condition.HideField(FirefoxPlacesRecordClass::property(IsFolder));
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage("Internal Data Conditions", options);
+    storage.Value("Condition", Condition);
+  }
+
+  void Main (CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      AccessStorage();
+      FilterDialogClass dialog(this);
+      if (dialog.Execute() == SystemClass::OK)
+      {
+        AccessStorage(StorageClass::WRITE);
+        String source_code;
+        if (Condition.GetSourceCode(source_code) && Program.Compile(typeof(FirefoxPlacesRecordClass), source_code) && Program.Constructor())
+        {
+          ItemIteratorClass iter(c, NORECURSE | NOPROXY, ALL);
+          while (EntryClass e = iter.GetNextEntry())
+          {
+            if (e.Name().Compare("places.sqlite") == 0)
+            {
+              Process(e);
+            }
+          }
+          Program.Destructor();
+        }
+      }
+    }
+  }
+
+  void Process (EntryClass e)
+  {
+    Console.WriteLine("Processing '{0}'.", e.ItemPath());
+    EntryFileClass ef();
+    if (ef.Open(e))
+    {
+      TraceClass::SQLiteFileData("Got SQLite file data.");
+      SQLiteClass sql();
+      if (sql.Open(ef, SQLITE_OPEN_READONLY))
+      {
+        TraceClass::OpenedSQLiteDB("Opened SQLite DB.");
+        SQLiteClass::CommandClass cmd();
+        if (sql.CreateCommand(cmd))
+        {
+          SQLiteClass::DataReaderClass reader();
+          if (cmd.ExecuteQuery(Query, reader))
+          {
+            if (reader.MoveFirst() && reader.Read())
+            {
+              Console.Write("Title\tURL\tVisit Count\tLast Visit Date\n");
+              do
+              {
+                ProcessRecord(reader);
+              }
+              while (reader.Read());
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void ProcessRecord(SQLiteClass::DataReaderClass reader)
+  {
+    String title, url;
+    uint   visit_count;
+    ulong  last_visit_date_microseconds; // (1 second = 1,000,000 microseconds)
+    if (reader.Get(0, title) &&
+        reader.Get(1, url) &&
+        reader.Get(2, last_visit_date_microseconds) &&
+        reader.Get(3, visit_count))
+    {
+      FirefoxPlacesRecordClass r(title, url, visit_count, last_visit_date_microseconds);
+      if (Program.Filter(r))
+      {
+        r.GetInfo();
+      }
+    }
+  }
+}
