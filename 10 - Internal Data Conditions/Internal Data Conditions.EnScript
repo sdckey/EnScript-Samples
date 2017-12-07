@@ -16,7 +16,7 @@
  *  a minimal memory overhead.
  *
  *  The data-class objects are filtered by a custom data-condition,
- *  which is set using a very simple GUI, one that only has a button.
+ *  which is set using a very simple GUI.
  *
  *  The condition set by the user is persisted through the use of
  *  StorageClass.
