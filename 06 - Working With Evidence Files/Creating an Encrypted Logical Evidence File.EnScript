@@ -1,0 +1,49 @@
+/*
+ *  This code-sample iterates selected entries in the current view
+ *  and writes them into a logical evidence file (LEF) encrypted
+ *  with a password and *.PublicKey file.
+ *
+ *  Public/private encryption key-pairs can be generated via the
+ *  View -> Encryption Keys menu in EnCase.
+ */
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      String output_path;
+      if (SystemClass::PathDialog(output_path,
+                                  "Choose output path",
+                                  "Lx01",
+                                  "Logical Evidence Files\t*.Lx01",
+                                  CREATE))
+      {
+        LogicalEvidenceFileClass lef();
+        EvidenceFileClass ev();
+        ev.SetEncryption(AES_256);
+        CredentialClass creds(); // The root object in a list of credentials
+        creds.SetEncryptionType(EV2); // This isn't optional
+        CredentialClass password_cred(creds);
+        password_cred.SetEncryptionType(EV2);
+        password_cred.SetPassword("Password12345");
+        CredentialClass key_cred(creds);
+        key_cred.SetEncryptionType(EV2);
+        key_cred.SetPath("C:\\EnCase Enterprise Keys\\User Keys\\Simon Key.PublicKey");
+        if (lef.Open(output_path, DELETEONCLOSEIFEMPTY | LEF2, ev, creds))
+        {
+          ItemIteratorClass iter(c, NOPROXY | NORECURSE, CURRENTVIEW_SELECTED);
+          while (EntryClass e = iter.GetNextEntry())
+          {
+            LogicalEvidenceFileClass::DataClass data();
+            data.SetTarget(e, MODEENTRY);
+            if (lef.Add(data))
+            {
+              Console.WriteLine("'{0}' added to LEF", e.ItemPath());
+            }
+          }
+        }
+      }
+    }
+  }
+}
