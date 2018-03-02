@@ -1,0 +1,384 @@
+/**
+    This EnScript demonstrates the automated acquisition of files from
+    remote nodes using EnCase Endpoint Investigator and DeviceInfoClass.
+
+    Files will be written into one or more logical evidence files (LEFs)
+    on a per-volume basis.
+
+    A custom condition is used to identify the entries to be processed.
+
+    The script will capture file-system metadata by default. It can
+    also be instructed to copy logical data, but this will take longer.
+
+    Feedback is provided by the console window.
+
+    It's important to note the following:
+
+    - This is the least intrusive method of obtaining data and doesn't
+      require remediation to be enabled on the SAFE (unlike HostFileClass),
+      but it is slow because EnCase has to read the volume-structure
+      directly; it does not request logical file-data from Windows.
+    - The script doesn't target physical disks with a view to capturing
+      data from mounted encrypted volumes. On target Windows systems,
+      this also has the benefit of seeing drive letters as they
+      would be seen by the user.
+    - The connection to the target nodes must be maintained for the
+      acquisition to complete. A more robust option would be to use the
+      Endpoint Investigator Enhanced Agent.
+
+    This code is based on the ConnectionClass example in the EnScript
+    help file. which ships with EnCase.
+
+    This script also demonstrates persistent storage of user settings
+    using StorageClass, and the ability to filter data internally using
+    ProgramClass and ConditionClass.
+
+    Tested using EnCase V8.06.00.224.
+
+**/
+
+class MainClass {
+
+  SafeClass      Safe;                // Object to connect to SAFE.
+  RoleClass      RoleRoot,            // List of all roles for a given user.
+                 Role;                // Role user chooses to take.
+  NetworkClass   SweepNet;            // List of remote nodes to connect to.
+  String         NetText,             // Textual list of remote nodes.
+                 ClientReturnAddress, // For NODECLIENT connection options.
+                 StatusBarName,       // Name to be displayed in the status bar.
+                 OutputFolder;        // Output folder for LEFs.
+  int            NumConnections,      // Number of SAFE connections to use.
+                 ConnectOptions;      // Connection Options: INDIRECT, CLIENTNODELOCAL, CLIENTNODESAFE, NODECLIENT.
+  uint           Index;               // Index used to name LEFs.
+  ProgramClass   Prog;                // Provides the entry filter.
+  ConditionClass Condition;           // Contains the code used by the entry filter.
+  bool           GetLogicalData;      // Option to acquire logical data in addition to file-system metadata.
+
+
+  MainClass() :
+    Safe(),
+    RoleRoot(),
+    Role(),
+    SweepNet(),
+    NumConnections = 1,
+    ConnectOptions = ConnectionClass::CLIENTNODESAFE,
+    StatusBarName = "EEI File Access Using DeviceInfoClass",
+    Prog(),
+    Condition(null, "Entry Condition")
+  {
+    Condition.SetClassName("EntryClass");
+  }
+
+  /**
+    Persist user parameters to save re-entry
+  **/
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(StatusBarName, options);
+    storage.Value("Condition", Condition);
+    storage.Value("NetText", NetText);
+    storage.Value("OutputFolder", OutputFolder);
+    storage.Value("GetLogicalData", GetLogicalData);
+  }
+
+  /**
+    Entry point of the Enscript
+  **/
+  void Main() {
+    SystemClass::ClearConsole(1);
+    AccessStorage();
+    if (Safe.Logon(null) && ShowDiag() == SystemClass::OK) {
+      AccessStorage(StorageClass::WRITE);
+      String condition_code;
+      if (Condition.GetSourceCode(condition_code) && Prog.Compile(typeof(EntryClass), condition_code) && Prog.Constructor())
+      {
+        Sweep();
+        SystemClass::Message(0, "Success", String::Format("{0}: Completed Successfully!", StatusBarName));
+        Prog.Destructor();
+      }
+    }
+  }
+
+  /**
+    This method contains the logic we want to apply to each node on the network
+  **/
+  void Process(ConnectionClass conn, SnapshotClass snap) {
+    Console.WriteLine("Connected To Servlet On {0} Snapshot State = {1}", snap.Name(), SnapshotClass::States::SourceText(snap.State()));
+    ProcessDevices(conn, snap);
+  }
+
+
+  /**
+    Process devices
+  **/
+
+  void ProcessDevices(ConnectionClass conn, SnapshotClass snap)
+  {
+    DeviceInfoClass devinfo();
+    if (devinfo.Create(conn, PROCESSLOGICAL))
+    {
+      CaseClass temp();
+      DateClass date();
+      date.Now();
+      String base_output_file_name = String::Format("{0} - {1} - {2}", snap.Name(), date.GetString("yyyyMMdd", "hhmmss", 0), String::FormatInt(Index++, int::DECIMAL, 0, 6));
+      foreach (DeviceInfoClass d in devinfo)
+      {
+        Console.WriteLine("Processing volume {0}.", d.Name());
+        if (DeviceClass mounted = d.Mount(temp))
+        {
+          Console.WriteLine("Successfully mounted volume {0} as a device.", d.Name());
+          if (EntryClass entry_root = mounted.GetRootEntry())
+          {
+            Console.WriteLine("Got root entry on volume {0}.", d.Name());
+            String lef_path = String::Format("{0}\\{1} - {2}.Lx01", OutputFolder, base_output_file_name, d.Name());
+            EvidenceFileClass ev();
+            ev.SetCompression(COMPRESSFAST);
+            LogicalEvidenceFileClass lef();
+            Console.WriteLine("Trying to open LEF at '{0}'", lef_path);
+            if (lef.Open(lef_path, DELETEONCLOSEIFEMPTY | LEF2))
+            {
+              Console.WriteLine("LEF opened at '{0}'.", lef_path);
+              forall (EntryClass e in entry_root)
+              {
+                if (Prog.Filter(e))
+                {
+                  Console.WriteLine("Adding '{0}' to LEF.", e.ItemPath());
+                  LogicalEvidenceFileClass::DataClass data();
+                  /**
+                     File hashing takes additional time; one option
+                     might to hash the data only if it's to be
+                     retrieved. This would also allow EnCase to
+                     de-dupe datastreams in the LEF.
+                   **/
+                  uint file_options = LogicalEvidenceFileClass::FILEHASH;
+                  if (GetLogicalData)
+                  {
+                    file_options |= LogicalEvidenceFileClass::FILECONTENTS;
+                  }
+                  data.FileOptions = file_options;
+                  data.SetTarget(e, MODEENTRY);
+                  if (lef.Add(data))
+                  {
+                    Console.WriteLine("Successfully added '{0}' to LEF", e.Name());
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   Display dialogs
+  **/
+  int ShowDiag() {
+    RoleRoot = Safe.RoleRoot();
+    DialogClass diag();
+    new NetTextDialogClass(diag, this);
+    return diag.Wizard();
+  }
+
+  /**
+    Code that gets connection and snapshot
+  **/
+  void ReadNetwork(BatchClass batch, SnapshotClass root) {
+    String message,
+           name;
+    DateClass d();
+    do {
+      ConnectionClass conn;
+      SnapshotClass ss(null);
+      message = "";
+      BatchClass::ConnectionTypes reply = batch.GetConnection(conn, ss, name, message, 0);
+      if (reply == BatchClass::BATCHCONNECT) { //successfully connected to remote node
+        Process(conn, ss);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHERROR) { //could not connect to remote node. ss object will have the state of the node
+        d.Now();
+        Console.WriteLine("Could Not Connect To {0} SAFE Error Message: ", name, message);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHWAIT)
+        SystemClass::Sleep(100);
+      else if (reply == BatchClass::BATCHFATAL) {
+        String err = SystemClass::LastError();
+        Console.WriteLine("The SAFE is not responding: {0}. This Enscript will terminate.", err);
+        return;
+      }
+    } while (reply != BatchClass::BATCHDONE);
+  }
+
+  /**
+    Code that creates a batchclass
+  **/
+  void Sweep() {
+    DateClass now;
+    SnapshotClass newSnaps = new SnapshotClass(null, "Snapshot");
+    BatchClass batch(Safe, Role, NumConnections, ConnectionClass::SNAPALL);
+    if (batch.Add(SweepNet)) {
+      batch.SetMode(ConnectionClass::Options::Convert(ConnectOptions), ClientReturnAddress);
+      if (batch.Start()) {
+        uint machines = batch.TotalMachines();
+        Console.WriteLine("Scanning {0} using {1}", Plural("node", machines), Plural("connection", batch.ConnectionsUsed()));
+        SystemClass::StatusRange(StatusBarName, machines);
+        uint start;
+        now.Now();
+        start = now.GetUnix();
+        ReadNetwork(batch, newSnaps);
+        now.Now();
+        Console.WriteLine("Scan completed in {0} seconds", (now.GetUnix() - start));
+      }
+      else {
+        SystemClass::Message(0, "BatchClass error", SystemClass::LastError());
+      }
+    }
+    else {
+      SystemClass::Message(0, "BatchClass Error", "Unable to add any IPs to the sweep");
+    }
+  }
+
+  String Plural(const String &str, uint n) {
+    return String::Format("{0} {1}{2}", n, str, n == 1 ? "" : "s");
+  }
+
+  /**
+    Turn a string of text into networkclass objects
+  **/
+  bool ParseText(String t) {
+    SweepNet.Close();
+    bool ret = false;
+    while (t) {
+      ret = true;
+      int    end  = t.Find("\n");
+      String line = end < 0 ? t : t.SubString(0, end);
+      int    dash = line.Find("-");
+      if (dash >= 0) {
+        IPClass ip1(ExtractIP(line.SubString(0, dash))),
+                ip2(ExtractIP(line.SubString(dash+1, -1)));
+        if (ip1 && ip2) {
+          NetworkClass n(SweepNet, "IP Range", NodeClass::SELECTED);
+          n.SetStart(ip1);
+          n.SetStop(ip2);
+        }
+        else
+          NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      else if (line != "")  {
+        NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      if (end >= 0)
+        t.Delete(0, end+1);
+      else
+        break;
+    }
+    return ret;
+  }
+
+  /**
+    Check for IPs in nettext
+  **/
+  String ExtractIP(const String &s) {
+    String ret = s;
+    ret.Trim(" ", String::TRIMSTART | String::TRIMEND);
+    return ret.IsValidIPAddress() ? ret : "";
+  }
+}
+
+/**
+  Dialog to choose a role and enter nodes to sweep
+**/
+class NetTextDialogClass: DialogClass {
+
+  MainClass       Data;
+  StaticTextClass SafeTextEdit;
+  TreeEditClass   Tree;
+  StaticTextClass Help;
+  StringEditClass NetTextEdit;
+  StaticTextClass OutputFolderEdit;
+  PathEditClass   OutputFolder;
+  StaticTextClass GetLogicalDataEdit;
+  CheckBoxClass   GetLogicalData;
+  ButtonClass     SetEntryCondition;
+
+  NetTextDialogClass(DialogClass diag, MainClass d) :
+    DialogClass(diag, String::Format("{0} Options", d.StatusBarName)),
+    Data = d,
+    SafeTextEdit(this, "", START, 15, 200, 100, 0),
+    Tree(this, "Choose The Role You Want To Assume", NEXT, START, 200, 100, 0, d.RoleRoot, 0),
+    Help(this, "Enter IP addresses or machine names on separate\n"
+                 "lines. Enter ranges on separate lines and delimit\n"
+                 "the start and stop address with a dash (\"-\").\n\n"
+                 "Example:\n\n"
+                 "\tlocalhost\n"
+                 "\t192.168.5.5\n"
+                 "\t192.168.0.16-192.168.0.64\n"
+                 "\t192.168.1.1-192.168.3.255\n"
+                 "\tfd00:0:1000:20:0:0:0:100\n",
+                 START, NEXT, 200, 100, REQUIRED),
+    NetTextEdit(this, "", NEXT, SAME, 200, 100, AUTOVSCROLL | MULTILINE | WANTRETURN, d.NetText, -1, 0),
+    OutputFolderEdit(this, "Output Folder", START, NEXT, DEFAULT, DEFAULT, 0),
+    OutputFolder(this, "", 215, SAME, 200, DEFAULT, 0, Data.OutputFolder, FOLDEROPEN | REQUIRED),
+    GetLogicalDataEdit(this, "Get logical data in addition to file-system metadata?", START, NEXT, DEFAULT, DEFAULT, 0),
+    GetLogicalData(this, "", 215, SAME, 10, 10, 0, Data.GetLogicalData),
+    SetEntryCondition(this, "Set Entry Condition", 175, 260, DEFAULT, DEFAULT, 0)
+  {
+
+  }
+
+  virtual void Setup() {
+    DialogClass::Setup();
+    SafeTextEdit.SetText(String::Format("SAFE:\t\t\t{0}\n", Data.Safe.Name()) +
+                         String::Format("User:\t\t\t{0}\n", Data.Safe.UserName()) +
+                         String::Format("Total Connections:\t\t{0}\n", Data.Safe.TotalConnections()) +
+                         String::Format( "Active Connections:\t{0}\n", Data.Safe.ActiveConnections()) +
+                         String::Format("Connections To Use:\t{0}\n", Data.NumConnections) +
+                         String::Format("Remediation Allowed:\t{0}\n", (Data.Safe.RemediationAllowed() ? "Yes" : "No")) +
+                         String::Format("Snapshot Allowed:\t\t{0}\n", (Data.Safe.SnapshotAllowed() ? "Yes" : "No")) +
+                         String::Format("SAFE Version:\t\t{0}", Data.Safe.Version())
+                        );
+  }
+
+  /**
+    Handle dialog events
+  **/
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (SetEntryCondition.Matches(event))
+    {
+      Data.Condition.ShowEditDialog(this);
+    }
+    super::ChildEvent(event);
+  }
+
+  /**
+    Respond to changes in dialog state
+  **/
+
+  virtual void CheckControls() {
+    DialogClass::CheckControls();
+    EnableClose(Tree.GetValue().Parent());
+  }
+
+  /**
+    Check user input before closing
+  **/
+
+  virtual bool CanClose() {
+    Output();
+    bool ret = false;
+    if (DialogClass::CanClose()) {
+      Data.Role = RoleClass::TypeCast(Tree.GetValue());
+      ret = Data.ParseText(Data.NetText);
+      if (!ret)
+        ErrorMessage("Please Enter a value in the IP List Text Area.");
+    }
+    return ret;
+  }
+}
