@@ -17,7 +17,7 @@
     - This is the least intrusive method of obtaining data and doesn't
       require remediation to be enabled on the SAFE (unlike HostFileClass),
       but it is slow because EnCase has to read the volume-structure
-      directly; it does not request logical file-data from Windows.
+      directly; it does not request logical file-data from the host OS.
     - The script doesn't target physical disks with a view to capturing
       data from mounted encrypted volumes. On target Windows systems,
       this also has the benefit of seeing drive letters as they
