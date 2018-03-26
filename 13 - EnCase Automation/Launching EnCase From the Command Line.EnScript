@@ -1,0 +1,56 @@
+class MainClass {
+  void Main()
+  {
+
+    // Store the command-line parameters in a reference variable
+
+    NameListClass args = SystemClass::GetArgs();
+
+    // Declare a string for the output path
+
+    String output_path;
+
+    // Get the user's profile path
+
+    if (LocalMachine.ResolveVariable("USERPROFILE", output_path))
+    {
+
+      // Set the output path to a file on the desktop
+
+      output_path = String::Format("{0}\\Desktop\\EnCase Command-Line Results.txt", output_path);
+
+      // Declare, instantiate, construct, and open the output file
+
+      LocalFileClass output();
+      if (output.Open(output_path, WRITETEXTCRLF))
+      {
+
+        // Check we've got some arguments
+
+        if (args.Count())
+        {
+          uint counter;
+
+          // Write the arguments to the output file
+
+          foreach (NameListClass arg in args)
+          {
+            output.WriteLine("Argument[{0}] = {1}", counter++, arg.Name());
+          }
+        }
+        else
+        {
+          output.WriteLine("No command-line arguments detected!");
+        }
+
+        // Close the output file to flush any buffers and release the file-handle
+
+        output.Close();
+
+        // Open the output file in the default Windows editor
+
+        SystemClass::OpenFile(output_path);
+      }
+    }
+  }
+}
