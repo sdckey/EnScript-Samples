@@ -1,0 +1,378 @@
+/**
+    This EnCase Endpoint Investigator EnScript retrieves
+    information about fixed/removable volumes on a remote node.
+    It was primarily designed to identify the amount of available
+    (unallocated) space on each volume.
+
+    It's important to note that the script uses DeviceInfoClass,
+    which requires EnCase to read the structure of each volume.
+
+    This method is least intrusive and doesn't require
+    remediation or remote operating-system privileges, but it's
+    slower than requesting the volume information from the remote
+    OS, and the values calculated by EnCase may differ slightly.
+
+    Feedback is provided by the console window.
+
+    This code is based on the ConnectionClass example in the EnScript
+    help file. which ships with EnCase.
+
+    This script also demonstrates persistent storage of user settings
+    using StorageClass.
+
+    Tested using EnCase V8.06.00.224.
+
+**/
+
+class MainClass {
+
+  static const   long                 KiB = 1024,
+                                      MiB = KiB * 1024,
+                                      GiB = MiB * 1024,
+                                      TiB = GiB * 1024;
+
+  CaseClass      Case;                // Temporary Case
+  SafeClass      Safe;                // Object to connect to SAFE.
+  RoleClass      RoleRoot,            // List of all roles for a given user.
+                 Role;                // Role user chooses to take.
+  NetworkClass   SweepNet;            // List of remote nodes to connect to.
+  String         NetText,             // Textual list of remote nodes.
+                 ClientReturnAddress, // For NODECLIENT connection options.
+                 StatusBarName;       // Script name.
+  int            NumConnections,      // Number of SAFE connections to use.
+                 ConnectOptions;      // Connection Options: INDIRECT, CLIENTNODELOCAL, CLIENTNODESAFE, NODECLIENT.
+
+
+  MainClass() :
+    Safe(),
+    RoleRoot(),
+    Role(),
+    SweepNet(),
+    NumConnections = 1,
+    ConnectOptions = ConnectionClass::CLIENTNODESAFE,
+    StatusBarName = "EEI Remote Volume Information Using DeviceInfoClass"
+  {
+
+  }
+
+  /**
+    Persist user parameters to save re-entry
+  **/
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(StatusBarName, options);
+    storage.Value("NetText", NetText);
+  }
+
+  /**
+    Entry point of the Enscript
+  **/
+  void Main() {
+    SystemClass::ClearConsole(1);
+    AccessStorage();
+    if (Safe.Logon(null) && ShowDiag() == SystemClass::OK) {
+      Case = new CaseClass();
+      AccessStorage(StorageClass::WRITE);
+      Sweep();
+      SystemClass::Message(0, "Success", String::Format("{0}: Completed Successfully!", StatusBarName));
+    }
+  }
+
+  /**
+    This method contains the logic we want to apply to each node on the network
+  **/
+
+  void Process(ConnectionClass conn, SnapshotClass snap) {
+    Console.WriteLine("Connected To Servlet On {0}; Snapshot State = {1}.", snap.Name(), SnapshotClass::States::SourceText(snap.State()));
+    ProcessDevices(conn);
+  }
+
+
+  /**
+    Process devices
+  **/
+
+  void ProcessDevices(ConnectionClass conn)
+  {
+    DeviceInfoClass device_infos();
+    if (device_infos.Create(conn, PROCESSLOGICAL))
+    {
+      foreach (DeviceInfoClass dev_info in device_infos)
+      {
+        if (dev_info.DriveType() <= DeviceClass::DRIVEFIXED)
+        {
+          Console.WriteLine("Mounting Device: {0}", dev_info.Name());
+          if (DeviceClass dev = dev_info.Mount(Case))
+          {
+            GetLogicalVolumeInfo(dev);
+          }
+          else
+          {
+            Console.WriteLine("Can't Mount Device: {0}", dev_info.Name());
+          }
+        }
+      }
+    }
+  }
+
+  /**
+    Get a more human-readable size.
+  **/
+
+  String GetHRSize(long size)
+  {
+    String retval;
+    double size_as_double = size;
+
+    if (size >= TiB)
+    {
+      size_as_double /= TiB;
+      retval = String::Format("{0} TiB ({1} bytes)", String::FormatDouble(size_as_double, 2), size);
+    }
+    else if (size >= GiB)
+    {
+      size_as_double /= GiB;
+      retval = String::Format("{0} GiB ({1} bytes)", String::FormatDouble(size_as_double, 2), size);
+    }
+    else if (size >= MiB)
+    {
+      size_as_double /= MiB;
+      retval = String::Format("{0} MiB ({1} bytes)", String::FormatDouble(size_as_double, 2), size);
+    }
+    else if (size >= KiB)
+    {
+      size_as_double /= KiB;
+      retval = String::Format("{0} KiB ({1} bytes)", String::FormatDouble(size_as_double, 2), size);
+    }
+    else
+    {
+      retval = String::Format("{0} bytes", size);
+    }
+
+    return retval;
+  }
+
+  /**
+    Get the volume from each device and write its info
+    to the console.
+  **/
+
+  void GetLogicalVolumeInfo(DeviceClass dev)
+  {
+    Console.WriteLine("Volume: {0}", dev.Name());
+    if (EntryClass entry_root = dev.GetRootEntry())
+    {
+      if (VolumeClass v = VolumeClass::TypeCast(entry_root))
+      {
+        Console.WriteLine("\tFile System: {0}", VolumeClass::FileSystems::SourceText(v.GetFileSystem()));
+        Console.WriteLine("\tBytes Per Sector: {0}", v.BytesPerSector());
+        Console.WriteLine("\tSectors Per Cluster: {0}", v.SectorsPerCluster());
+        Console.WriteLine("\tBytes Per Cluster: {0}", v.BytesPerCluster());
+        Console.WriteLine("\tTotal Sectors: {0}", v.TotalSectors());
+        Console.WriteLine("\tTotal Clusters: {0}", v.TotalClusters());
+        Console.WriteLine("\tFree Clusters: {0}", v.FreeClusters());
+        Console.WriteLine("\tTotal Capacity: {0}", GetHRSize(v.TotalCapacity()));
+        Console.WriteLine("\tUnallocated Space: {0}", GetHRSize(v.UnallocatedSpace()));
+        Console.WriteLine();
+      }
+    }
+  }
+
+  /**
+   Display dialogs
+  **/
+  int ShowDiag() {
+    RoleRoot = Safe.RoleRoot();
+    DialogClass diag();
+    new NetTextDialogClass(diag, this);
+    return diag.Wizard();
+  }
+
+  /**
+    Code that gets connection and snapshot
+  **/
+  void ReadNetwork(BatchClass batch, SnapshotClass root) {
+    String message,
+           name;
+    DateClass d();
+    do {
+      ConnectionClass conn;
+      SnapshotClass ss(null);
+      message = "";
+      BatchClass::ConnectionTypes reply = batch.GetConnection(conn, ss, name, message, 0);
+      if (reply == BatchClass::BATCHCONNECT) { //successfully connected to remote node
+        Process(conn, ss);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHERROR) { //could not connect to remote node. ss object will have the state of the node
+        d.Now();
+        Console.WriteLine("Could Not Connect To {0} SAFE Error Message: ", name, message);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHWAIT)
+        SystemClass::Sleep(100);
+      else if (reply == BatchClass::BATCHFATAL) {
+        String err = SystemClass::LastError();
+        Console.WriteLine("The SAFE is not responding: {0}. This Enscript will terminate.", err);
+        return;
+      }
+    } while (reply != BatchClass::BATCHDONE);
+  }
+
+  /**
+    Code that creates a batchclass
+  **/
+  void Sweep() {
+    DateClass now;
+    SnapshotClass newSnaps = new SnapshotClass(null, "Snapshot");
+    BatchClass batch(Safe, Role, NumConnections, ConnectionClass::SNAPALL);
+    if (batch.Add(SweepNet)) {
+      batch.SetMode(ConnectionClass::Options::Convert(ConnectOptions), ClientReturnAddress);
+      if (batch.Start()) {
+        uint machines = batch.TotalMachines();
+        Console.WriteLine("Scanning {0} using {1}.", Plural("node", machines), Plural("connection", batch.ConnectionsUsed()));
+        SystemClass::StatusRange(StatusBarName, machines);
+        uint start;
+        now.Now();
+        start = now.GetUnix();
+        ReadNetwork(batch, newSnaps);
+        now.Now();
+        Console.WriteLine("Scan completed in {0} seconds.", (now.GetUnix() - start));
+      }
+      else {
+        SystemClass::Message(ICONSTOP, "BatchClass Error", SystemClass::LastError());
+      }
+    }
+    else {
+      SystemClass::Message(ICONSTOP, "BatchClass Error", "Unable to add any IPs to the sweep.");
+    }
+  }
+
+  String Plural(const String &str, uint n) {
+    return String::Format("{0} {1}{2}", n, str, n == 1 ? "" : "s");
+  }
+
+  /**
+    Turn a string of text into networkclass objects
+  **/
+  bool ParseText(String t) {
+    SweepNet.Close();
+    bool ret = false;
+    while (t) {
+      ret = true;
+      int    end  = t.Find("\n");
+      String line = end < 0 ? t : t.SubString(0, end);
+      int    dash = line.Find("-");
+      if (dash >= 0) {
+        IPClass ip1(ExtractIP(line.SubString(0, dash))),
+                ip2(ExtractIP(line.SubString(dash+1, -1)));
+        if (ip1 && ip2) {
+          NetworkClass n(SweepNet, "IP Range", NodeClass::SELECTED);
+          n.SetStart(ip1);
+          n.SetStop(ip2);
+        }
+        else
+          NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      else if (line != "")  {
+        NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      if (end >= 0)
+        t.Delete(0, end+1);
+      else
+        break;
+    }
+    return ret;
+  }
+
+  /**
+    Check for IPs in nettext
+  **/
+  String ExtractIP(const String &s) {
+    String ret = s;
+    ret.Trim(" ", String::TRIMSTART | String::TRIMEND);
+    return ret.IsValidIPAddress() ? ret : "";
+  }
+}
+
+/**
+  Dialog to choose a role and enter nodes to sweep
+**/
+class NetTextDialogClass: DialogClass {
+
+  MainClass       Data;
+  StaticTextClass SafeTextEdit;
+  TreeEditClass   Tree;
+  StaticTextClass Help;
+  StringEditClass NetTextEdit;
+
+  NetTextDialogClass(DialogClass diag, MainClass d) :
+    DialogClass(diag, String::Format("{0} Options", d.StatusBarName)),
+    Data = d,
+    SafeTextEdit(this, "", START, 15, 200, 100, 0),
+    Tree(this, "Choose The Role You Want To Assume", NEXT, START, 200, 100, 0, d.RoleRoot, 0),
+    Help(this, "Enter IP addresses or machine names on separate\n"
+                 "lines. Enter ranges on separate lines and delimit\n"
+                 "the start and stop address with a dash (\"-\").\n\n"
+                 "Example:\n\n"
+                 "\tlocalhost\n"
+                 "\t192.168.5.5\n"
+                 "\t192.168.0.16-192.168.0.64\n"
+                 "\t192.168.1.1-192.168.3.255\n"
+                 "\tfd00:0:1000:20:0:0:0:100\n",
+                 START, NEXT, 200, 100, REQUIRED),
+    NetTextEdit(this, "", NEXT, SAME, 200, 100, AUTOVSCROLL | MULTILINE | WANTRETURN, d.NetText, -1, 0)
+  {
+
+  }
+
+  virtual void Setup() {
+    DialogClass::Setup();
+    SafeTextEdit.SetText(String::Format("SAFE:\t\t\t{0}\n", Data.Safe.Name()) +
+                         String::Format("User:\t\t\t{0}\n", Data.Safe.UserName()) +
+                         String::Format("Total Connections:\t\t{0}\n", Data.Safe.TotalConnections()) +
+                         String::Format( "Active Connections:\t{0}\n", Data.Safe.ActiveConnections()) +
+                         String::Format("Connections To Use:\t{0}\n", Data.NumConnections) +
+                         String::Format("Remediation Allowed:\t{0}\n", (Data.Safe.RemediationAllowed() ? "Yes" : "No")) +
+                         String::Format("Snapshot Allowed:\t\t{0}\n", (Data.Safe.SnapshotAllowed() ? "Yes" : "No")) +
+                         String::Format("SAFE Version:\t\t{0}", Data.Safe.Version())
+                        );
+  }
+
+  /**
+    Handle dialog events
+  **/
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    super::ChildEvent(event);
+  }
+
+  /**
+    Respond to changes in dialog state
+  **/
+
+  virtual void CheckControls() {
+    DialogClass::CheckControls();
+    EnableClose(Tree.GetValue().Parent());
+  }
+
+  /**
+    Check user input before closing
+  **/
+
+  virtual bool CanClose() {
+    Output();
+    bool ret = false;
+    if (DialogClass::CanClose()) {
+      Data.Role = RoleClass::TypeCast(Tree.GetValue());
+      ret = Data.ParseText(Data.NetText);
+      if (!ret)
+        ErrorMessage("Please Enter a value in the IP List Text Area.");
+    }
+    return ret;
+  }
+}
