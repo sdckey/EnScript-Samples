@@ -1,0 +1,226 @@
+class MainClass;
+
+class MyDialogClass: DialogClass
+{
+  MainClass                                                    M;
+
+  ButtonClass                                                  _Help;
+
+  StringEditClass                                              _BookmarkFolderName;
+
+  PathEditClass                                                _OutputPath;
+
+  StringEditClass                                              _PropertyNamesAsString;
+
+  MyDialogClass(MainClass m) :
+    super(null, m.ScriptName),
+    M = m,
+    _Help(this, "Help", START, START, DEFAULT, DEFAULT, 0),
+    _BookmarkFolderName(this, "Bookmark Folder Name", START, NEXT, 300, DEFAULT, 0, M.BookmarkFolderName, -1, REQUIRED),
+    _OutputPath(this, "TSV Output Path", START, NEXT, 300, DEFAULT, 0, M.OutputPath, REQUIRED | FILECREATE),
+    _PropertyNamesAsString(this, "Comma or new-line delimited list of field (property) names", START, NEXT, 300, 100, 0, M.PropertyNamesAsString, -1, REQUIRED)
+
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_Help.Matches(event))
+    {
+      SystemClass::Message(ICONINFORMATION, M.ScriptName, M.HelpText);
+    }
+    super::ChildEvent(event);
+  }
+}
+
+class MainClass {
+
+  BookmarkClass                                                Folder;
+
+  String                                                       PropertyNamesAsString,
+                                                               OutputPath,
+                                                               BookmarkFolderName,
+                                                               ScriptName,
+                                                               HelpText;
+
+  NameListClass                                                PropertyNamesAsList;
+
+  ulong                                                        Index;
+
+
+  MainClass() :
+    PropertyNamesAsString("Message Class\nSubject\nCreated\nSent\nReceived"),
+    PropertyNamesAsList(),
+    BookmarkFolderName("Processed Records"),
+    ScriptName("Extract Records Field to TSV"),
+    HelpText
+    (
+      "This script is designed to write the 1st-level fields (properties) "
+      "of tagged records to a tab-delimited spreadsheet, which will be "
+      "opened automatically upon completion.\n\n"
+
+      "The fields to be written are specified in a comma or new-line "
+      "delimited list provided by the user. The names contained therein "
+      "should match those shown under the Fields tab of EnCase. Some "
+      "sample default fields are included.\n\n"
+
+      "In addition to the user-specified fields, the spreadsheet will "
+      "also contain the path of each record that has been processed "
+      "plus an index number. The latter can be used in conjunction "
+      "with the bookmarks created by the script to match a row in "
+      "the spreadsheet to the associated record in EnCase.\n\n"
+
+      "Second-level fields (e.g., recipients) are not processed; they "
+      "would be difficult to display in the output spreadsheet in a "
+      "flat format.\n\n"
+
+      "Binary fields and text-fields spanning multiple lines are not "
+      "supported. The latter are likely to cause corruption in the output "
+      "spreadsheet.\n\n"
+
+      "Settings are remembered for re-use. Feedback is provided via the "
+      "console.\n\n"
+
+      "Tested under EnCase 8.06.00.224.\n\n"
+
+      "Report bugs to:\n\n"
+
+      "Simon Key <skey@opentext.com>\n"
+      "Curriculum Developer\n"
+      "OpenText (GSI - Reading)\n\n"
+
+      "19th April, 2018"
+    )
+  {
+
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(ScriptName, options);
+    storage.Value("PropertyNamesAsString", PropertyNamesAsString);
+    storage.Value("BookmarkFolderName", BookmarkFolderName);
+    storage.Value("OutputPath", OutputPath);
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+     /*
+      *  A CSV extension is used for compatibility with MS Excel even
+      *  though the output file is in TSV format.
+      */
+      OutputPath = String::Format("{0}\\Record Data.csv", c.ExportFolder());
+      AccessStorage();
+      MyDialogClass dialog(this);
+      if (dialog.Execute() == SystemClass::OK)
+      {
+        AccessStorage(StorageClass::WRITE);
+        if (GetList())
+        {
+          ItemIteratorClass iter(c, NOPROXY | NORECURSE | PROMPT, TAGGED);
+          if (iter.Name())
+          {
+            Folder = new BookmarkClass(c.BookmarkRoot(), BookmarkFolderName, NodeClass::FOLDER);
+            LocalFileClass output();
+            if (output.Open(OutputPath, WRITETEXTCRLF))
+            {
+              WriteTSVHeadings(output);
+              while (RecordClass r = iter.GetNextRecord())
+              {
+                Console.WriteLine("Processing '{0}'.", r.Name());
+                WriteInfo(r, output);
+                BookmarkItemClass bmi(Folder);
+                bmi.CopyItemData(r);
+                bmi.SetComment(String::Format("Index: {0}", Index++));
+              }
+              output.Close();
+              SystemClass::OpenFile(OutputPath);
+            }
+          }
+          else
+          {
+            Console.WriteLine("No tags chosen!");
+          }
+        }
+        else
+        {
+          Console.WriteLine("Can't get property list!");
+        }
+      }
+      else
+      {
+        Console.WriteLine("Script cancelled.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("No case!");
+    }
+  }
+
+  uint GetList()
+  {
+    PropertyNamesAsList.Parse(PropertyNamesAsString, ",\n");
+    String t;
+    foreach (NameListClass pn in PropertyNamesAsList)
+    {
+      String t = pn.Name();
+      t.Trim(" \t", TRIMSTART | TRIMEND);
+      if (t.GetLength())
+      {
+        pn.SetName(t);
+      }
+      else
+      {
+        PropertyNamesAsList.Remove(pn);
+      }
+    }
+    return PropertyNamesAsList.Count();
+  }
+
+  void WriteInfo(RecordClass r, FileClass output)
+  {
+    output.Write("{0}\t", Index);
+    output.Write("{0}\t", r.ItemPath());
+    foreach (NameListClass property_name in PropertyNamesAsList)
+    {
+      foreach (DataPropertyClass prop in r.DataPropertyRoot())
+      {
+        if (prop.Name().Compare(property_name.Name()) == 0)
+        {
+          output.Write(prop.Value().GetString());
+          break;
+        }
+      }
+      if (PropertyNamesAsList.LastChild() == property_name)
+      {
+        output.Write("\n");
+      }
+      else
+      {
+        output.Write("\t");
+      }
+    }
+  }
+
+  void WriteTSVHeadings(FileClass output)
+  {
+    output.Write("Index\t");
+    output.Write("Record Path\t");
+    foreach (NameListClass property_name in PropertyNamesAsList)
+    {
+      output.Write("{0}", property_name.Name());
+      if (PropertyNamesAsList.LastChild() == property_name)
+      {
+        output.Write("\n");
+      }
+      else
+      {
+        output.Write("\t");
+      }
+    }
+  }
+}
