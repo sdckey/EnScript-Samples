@@ -1,0 +1,203 @@
+class MainClass {
+    String                                               BookmarkFolderName;
+
+    uint                                                 BookmarkRange,
+                                                         Counter;
+
+    BookmarkClass                                        Folder;
+
+    SearchClass                                          Search;
+
+    NameListClass                                        CompressedFiles;
+
+  MainClass() : // The colon signifies an optional initializer area
+    BookmarkRange = 100,
+    CompressedFiles()
+  {
+    CompressedFiles.Parse("pdf,docx", ",");
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      BookmarkFolderName = String::Format("{0} Results", c.Name());
+      if (c.HasEvidenceList())
+      {
+        if (c.HasTagsList())
+        {
+          BookmarkRange = (BookmarkRange % 2) ? ++BookmarkRange : BookmarkRange; // Range can't be odd otherwise UTF-16 transcript text
+                                                                                 // surrounding each hit won't be read properly; increment
+                                                                                 // by one if so.
+          ItemIteratorClass iter(c,
+                                 ItemIteratorClass::NORECURSE |
+                                 ItemIteratorClass::NOPROXY   |
+                                 ItemIteratorClass::PROMPT,
+                                 ItemIteratorClass::TAGGED);
+          if (iter.Name().GetLength())
+          {
+            if (CreateSearchEngine())
+            {
+              Folder = new BookmarkClass(c.BookmarkRoot(), BookmarkFolderName, NodeClass::FOLDER);
+              while(EntryClass e = iter.GetNextEntry())
+              {
+               Process(e);
+              }
+            }
+            else
+            {
+              Console.WriteLine("Can't create search engine!");
+            }
+          }
+          else
+          {
+            Console.WriteLine("No tags chosen for processing!");
+          }
+        }
+        else
+        {
+          Console.WriteLine("No tags!");
+        }
+      }
+      else
+      {
+        Console.WriteLine("No evidence!");
+      }
+    }
+    else
+    {
+      Console.WriteLine("No case!");
+    }
+  }
+
+  void ProcessCompressed(EntryClass e)
+  {
+    DocumentClass doc();
+    DocumentClass::TranscriptFileClass transcript();
+    if (doc.WriteTranscript(e, transcript, CodePageClass::UNICODE) == DocumentClass::ERRNONE)
+    {
+      if (Search.Find(transcript.BodyFile))
+      {
+        BookmarkClass sub = CreateBookmarkSubFolder(e);
+        foreach (SearchClass::HitClass hit in Search.GetHits())
+        {
+          String hitText = GetBookmarkStringFromTranscript(transcript.BodyFile, hit);
+          BookmarkClass note(sub);
+          note.CopyItemData(e);
+          note.SetComment(String::Format("Keyword Expression: \"{0}\"; Transcript Text: \"{1}\"", hit.Keyword().Expression(), hitText));
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("Can't get body-transcript for '{0}'", e.ItemPath());
+    }
+  }
+
+  void CalculateRange(FileClass input, SearchClass::HitClass h, long &bookmarkOffset, uint &bookmarkLength)
+  {
+    if (h.Offset() >= BookmarkRange)
+    {
+      bookmarkOffset = h.Offset() - BookmarkRange;
+    }
+    else
+    {
+      // Don't need to put any code in here - bookmarkOffset will have a value of zero by default
+    }
+    if (h.Offset() + h.Length() + BookmarkRange > input.GetSize())
+    {
+      bookmarkLength = input.GetSize() - bookmarkOffset;
+    }
+    else
+    {
+      bookmarkLength = (h.Offset() - bookmarkOffset) + h.Length() + BookmarkRange;
+    }
+  }
+
+  String GetBookmarkStringFromTranscript(FileClass input, SearchClass::HitClass hit)
+  {
+    String retval;
+    long bookmarkOffset;
+    uint bookmarkLength;
+    CalculateRange(input, hit, bookmarkOffset, bookmarkLength);
+    MemoryFileClass temp();
+    if (temp.Open(512, WRITE))
+    {
+      input.Seek(bookmarkOffset);
+      temp.WriteBuffer(input, bookmarkLength);
+      temp.Seek(0);
+      temp.ReadString(retval);
+    }
+    return retval;
+  }
+
+  BookmarkClass CreateBookmarkSubFolder(EntryClass e)
+  {
+    return new BookmarkClass(Folder, String::Format("{0} - {1}", String::FormatInt(Counter++, int::DECIMAL, 0, 6), e.Name()), NodeClass::FOLDER);
+  }
+
+  void ProcessUncompressed(EntryClass e)
+  {
+    EntryFileClass input();
+     if (input.Open(e, FileClass::SLACK))
+     {
+       Console.WriteLine("Processing '{0}'", e.ItemPath());
+       if (Search.Find(input))
+       {
+         BookmarkClass sub = CreateBookmarkSubFolder(e);
+         SearchClass::HitArrayClass hits = Search.GetHits();
+         for (uint i; i < hits.Count(); i++)
+         {
+           SearchClass::HitClass hit = hits[i];
+           BookmarkTextClass dec(sub);
+           dec.CopyItemData(e);
+           dec.SetDataOffset(hit.Offset());
+           dec.SetDataSize(hit.Length());
+           dec.SetComment(String::Format("Keyword expression: \"{0}\"", hit.Keyword().Expression()));
+         }
+       }
+     }
+     else
+     {
+       Console.WriteLine("Can't get file-data for '{0}'.", e.ItemPath());
+     }
+  }
+
+  void Process(EntryClass e)
+  {
+    if (CompressedFiles.Find(e.Extension()))
+    {
+      ProcessCompressed(e);
+    }
+    else
+    {
+      ProcessUncompressed(e);
+    }
+  }
+
+  bool CreateSearchEngine()
+  {
+    Search = new SearchClass();
+    Search.AddKeyword("source[ \\-]*code",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE |
+                      KeywordClass::GREP);
+    Search.AddKeyword("antigua",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE);
+    Search.AddKeyword("nick",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE);
+    Search.AddKeyword("burns",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE);
+    Search.AddKeyword("norm(an)?",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE |
+                      KeywordClass::GREP);
+    Search.AddKeyword("peterson",
+                      KeywordClass::ANSI |
+                      KeywordClass::UNICODE);
+    return Search.Create();
+  }
+}
