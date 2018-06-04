@@ -1,0 +1,144 @@
+/*
+ *  Script demonstrating how to extract the data shown by EnCase in the Report
+ *  and Document tabs.
+ *
+ *  The script processes tagged items with a non-zero logical size. No other
+ *  sanity check is performed.
+ */
+
+class MainClass {
+
+  String                   BaseOutputFolder,
+                           ReportViewOutputFolder,
+                           DocumentViewOutputFolder;
+
+
+  uint                     Index;
+
+  ItemCacheClass           Cache;
+
+
+ /*
+  *  Entry point
+  */
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      String BaseOutputFolder = c.ExportFolder();
+      if (SystemClass::FolderDialog(BaseOutputFolder, "Choose output folder"))
+      {
+        ReportViewOutputFolder = String::Format("{0}\\Report-View Output", BaseOutputFolder);
+        DocumentViewOutputFolder = String::Format("{0}\\Document-View Output", BaseOutputFolder);
+
+        // Export sub-folders will only be created if they don't already exist.
+
+        if (LocalMachine.CreateFolder(ReportViewOutputFolder) && LocalMachine.CreateFolder(DocumentViewOutputFolder))
+        {
+
+          /*
+          * ItemCacheClass provides a consistent way to obtain the data for an item
+          * regardless of whether it's a RecordClass or EntryClass object.
+          */
+
+          Cache = new ItemCacheClass(c);
+          ItemIteratorClass iter(c, NORECURSE | NOPROXY | PROMPT, TAGGED);
+          while (ItemClass i = iter.GetNextItem())
+          {
+            if (i.LogicalSize())
+            {
+              ProcessItem(i, c.TemporaryFolder());
+            }
+          }
+        }
+      }
+    }
+  }
+
+ /*
+  *  Function to process each item
+  */
+
+  void ProcessItem(ItemClass i, const String &temp_folder)
+  {
+    Console.WriteLine("Processing '{0}'.", i.ItemPath());
+
+   /* Use the item GUID for each item's output path to
+    * avoid incompatible file-name issues. We could
+    * sanitize the name, but we're lazy!
+    */
+
+    ItemMonikerClass moniker();
+    if (i.GetItemMoniker(moniker))
+    {
+      GetReport(i, moniker.Item);
+      GetDocumentView(i, moniker.Item, temp_folder);
+    }
+    ++Index;
+  }
+
+ /*
+  *  Function to get the data shown in the Document tab, which will consist of one
+  *  image per page, as rendered by the Outside In library.
+  */
+
+  void GetDocumentView(ItemClass i, GUIDClass ItemGUID, const String &temp_folder)
+  {
+    if (FileClass f = Cache.GetRawFile(i, 0))
+    {
+      DocumentClass doc();
+      if (doc.Open(temp_folder))
+      {
+        ImageClass images();
+        DocumentClass::DocOptionsClass doc_options();
+        if (doc.GetImages(images, f, doc_options))
+        {
+          if (doc_options.Result == DocumentClass::DocOptionsClass::RESULTOK)
+          {
+            String sub_folder_path = String::Format("{0}\\{1} - {2}", DocumentViewOutputFolder, String::FormatInt(Index, int::DECIMAL, 0, 6), ItemGUID);
+            if (LocalMachine.CreateFolder(sub_folder_path))
+            {
+              uint image_index;
+              foreach (ImageClass image in images)
+              {
+                String output_file_name = String::Format("Page {0}.png", String::FormatInt(image_index, int::DECIMAL, 0, 6)),
+                       image_output_path = String::Format("{0}\\{1}", sub_folder_path, output_file_name);
+                LocalFileClass output();
+                if (output.Open(image_output_path, WRITE))
+                {
+                  if (image.Write(output, PNG))
+                  {
+                    Console.WriteLine("Page {0} written to '{1}'.", image_index, image_output_path);  
+                  }
+                }
+                image_index++;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+ /*
+  *  Function to get the data shown in the Report tab. This will consist of a
+  *  document whose type is specified when calling the ExportClass::Open() method.
+  */
+
+  void GetReport(ItemClass i, GUIDClass ItemGUID)
+  {
+    String output_path = String::Format("{0}\\{1} - {2}.pdf", ReportViewOutputFolder, String::FormatInt(Index, int::DECIMAL, 0, 6), ItemGUID);
+    LocalFileClass output();
+    if (output.Open(output_path, WRITE))
+    {
+      ExportClass export();
+      if (export.Open(output, PDF))
+      {
+        export.SingleReport(i);
+        Console.WriteLine("Report written to '{0}'.", output_path);
+      }
+    }
+  }
+}
