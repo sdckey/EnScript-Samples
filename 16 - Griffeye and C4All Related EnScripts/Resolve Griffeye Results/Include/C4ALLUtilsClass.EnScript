@@ -1,0 +1,115 @@
+class C4ALLUtilsClass
+{
+
+#ifdef VERSION_6
+  static BookmarkFolderClass GetBookmarkFolder(BookmarkFolderClass parent, const String &name, const String &comment = "")
+  {
+    BookmarkFolderClass retval = parent.Find(name);
+    if (!retval)
+    {
+      retval = new BookmarkFolderClass(parent, name);
+      retval.SetComment(comment);
+    }
+    return retval;
+  }
+#else
+  static BookmarkClass GetBookmarkFolder(BookmarkClass parent, const String &name, const String &comment = "")
+  {
+    BookmarkClass retval = parent.Find(name);
+    if (!retval)
+    {
+      retval = new BookmarkClass(parent, name, NodeClass::FOLDER);
+      retval.SetComment(comment);
+    }
+    return retval;
+  }
+#endif
+
+
+  static bool ProcessSourceFileName(const String &source_file_name, ulong &physical_location, ulong &file_offset, bool &has_offset, String &file_name)
+  {
+    bool retval;
+    String physical_location_as_string, offset_as_string;
+    if (GetParameter(source_file_name, "PhysicalLocation", physical_location_as_string, file_name))
+    {
+      physical_location = ulong::Convert(physical_location_as_string);
+      retval = true;
+    }
+    if (GetParameter(source_file_name, "Offset", offset_as_string, file_name))
+    {
+      file_offset = ulong::Convert(offset_as_string);
+      has_offset = true;
+    }
+    return retval;
+  }
+
+  static bool GetParameter(const String &source, const String &name, String &parameter, String &file_name)
+  {
+    bool retval;
+    String target = String::Format("[{0}=", name);
+    if ((int name_start_pos =  source.Find(target))!= -1)
+    {
+      uint parameter_start = name_start_pos + target.GetLength(),
+           parameter_end   = source.Find("]", parameter_start);
+      parameter = source.SubString(parameter_start, parameter_end - parameter_start);
+      file_name = source.SubString(parameter_end + 2);
+      file_name.Trim("*", String::TRIMEND);
+      retval = true;
+    }
+    return retval;
+  }
+
+  static String GetPathMinusCase(const String &path)
+  {
+    return path.SubString(path.Find("\\") + 1);
+  }
+
+  static String GetPrimaryDeviceName(const String &directory_path)
+  {
+    String retval;
+    NameListClass components();
+    components.Parse(directory_path, "\\");
+    if (components.Count() >= 2)
+    {
+      retval = components.GetChild(1).Name();
+    }
+    return retval;
+  }
+  static bool ValidateHash(EntryClass e, const String &hash, ulong offset, ulong size, String &log_message)
+  {
+    bool retval;
+    HashClass original(hash);
+    EntryFileClass ef();
+    if (ef.Open(e, FileClass::SLACK))
+    {
+      ef.Seek(offset);
+      HashClass actual();
+      ef.ComputeMD5(actual, size);
+      retval = (actual == original);
+      log_message = (String::Format("Original hash: {0}; actual hash: {1}.", original, actual));
+    }
+    return retval;
+  }
+
+  static bool ParseFileList(NameListClass files, const String &file_list)
+  {
+    files.Close();
+    NameListClass source();
+    source.Parse(file_list, "\n");
+    if (source.Count())
+    {
+      String t;
+      foreach (NameListClass s in source)
+      {
+        t = s.Name();
+        t.Trim("\n \"", String::TRIMSTART | String::TRIMEND);
+        s.SetName(t);
+        if (s.Name() && LocalMachine.PathExists(s.Name()) && !files.Find(s.Name()))
+        {
+          files.Insert(s);
+        }
+      }
+    }
+    return files.Count();
+  }
+}
