@@ -1,0 +1,20 @@
+class MainClass {
+  void Main(CaseClass c) {
+    ProcessorManagerClass processor();
+    processor.Options.General = ProcessorManagerClass::OptionsClass::THUMBS |
+                                ProcessorManagerClass::OptionsClass::MD5    |
+                                ProcessorManagerClass::OptionsClass::SHA1   |
+                                ProcessorManagerClass::OptionsClass::SIG    |
+                                ProcessorManagerClass::OptionsClass::INDEX  |
+                                ProcessorManagerClass::OptionsClass::INDEXLUCENE;
+
+    processor.Options.Analyzers = ProcessorManagerClass::OptionsClass::STANDARDANALYZER;
+
+    processor.Options.Mount =   ProcessorManagerClass::OptionsClass::MOUNTARCHIVE;
+
+    if (processor.Create(c))
+    {
+
+    }
+  }
+}
