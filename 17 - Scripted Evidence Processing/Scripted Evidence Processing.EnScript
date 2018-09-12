@@ -1,0 +1,134 @@
+/*
+ * The script performs the following tasks -
+ *
+ * - Creates a case with a custom evidence-cache location
+ * - Adds two new items of evidence into the case
+ * - Performs an initial save of the case
+ * - Processes the evidence so as to -
+ *   - Mount common archive files
+ *   - Perform hash and signature analysis
+ *   - Create thumbnails
+ * - Loads the case into the GUI
+ * - Iterates through all of the items in the case
+ * - Bookmarks notable items using a pre-prepared hash-library
+ * - Saves the case with the updated data
+*/
+
+class MainClass {
+  void Main() {
+    SystemClass::ClearConsole(1);
+
+    NameListClass evidencePaths();
+    new NameListClass(evidencePaths, "C:\\Evidence Files\\Forensic Series - EnCase Computer Forensics I\\BBasher.E01");
+    new NameListClass(evidencePaths, "C:\\Evidence Files\\Forensic Series - EnCase Computer Forensics I\\WMartin.E01");
+
+    String caseName    = "My New Case",
+           casePath    = String::Format("C:\\Custom Processing\\Cases\\{0}.case", caseName),
+           evCache     = "C:\\Custom Processing\\Evidence Cache",
+           hashLibPath = "C:\\Hash Library";
+
+    CaseClass c(null, caseName); // Cannot use GlobalDataClass::CaseRoot() as parent - the case won't shown-up in the GUI properly.
+    c.SetUseBaseFolder(false);
+    c.SetPrimaryEvFolder(evCache);
+
+    bool success = true;
+    foreach (NameListClass evPath in evidencePaths)
+    {
+      EvidenceClass ev();
+      EvidencePathClass evPathRoot();
+      new EvidencePathClass(evPathRoot, evPath.Name());
+      ev.SetEvidencePathRoot(evPathRoot);
+      EvidenceOpenClass evOpen();
+      uint mountOptions = EvidenceOpenClass::MOUNTTOCACHE;
+      evOpen.SetMountOptions(mountOptions);
+      ev.SetOpenMode(OPENEVIDENCEFILE);
+      if (!ev.AddToCase(c, evOpen))
+      {
+        success = false;
+        break;
+      }
+    }
+
+    if (success)
+    {
+      Console.WriteLine("Evidence added to case.");
+      if (c.Write(casePath)) // Must save before processing
+      {
+        Console.WriteLine("Case saved.");
+        ProcessorManagerClass processor();
+        processor.Options.General = ProcessorManagerClass::OptionsClass::THUMBS |
+                                    ProcessorManagerClass::OptionsClass::MD5    |
+                                    ProcessorManagerClass::OptionsClass::SHA1   |
+                                    ProcessorManagerClass::OptionsClass::SIG;
+
+        processor.Options.Mount =   ProcessorManagerClass::OptionsClass::MOUNTARCHIVE;
+
+        if (processor.Create(c))
+        {
+          Console.WriteLine("Processor created.");
+          foreach (EvidenceClass ev in c.EvidenceRoot())
+          {
+            if (!processor.Run(ev))
+            {
+              success = false;
+              break;
+            }
+          }
+          if (success)
+          {
+            Console.WriteLine("Evidence processed successfully.");
+            c = new CaseClass(GlobalDataClass::CaseRoot(), caseName);
+            if (c.Read(casePath))
+            {
+              BookmarkClass folder(c.BookmarkRoot(), "Notable Items", NodeClass::FOLDER);
+              Console.WriteLine("Case loaded.");
+              Hash2LibraryClass lib();
+              if (lib.Open(hashLibPath))
+              {
+                Hash2ItemIteratorClass hash_iter();
+                Hash2ItemRecordClass  hash_rec();
+                Hash2ItemClass hash_item();
+                Hash2SetClass hashSet();
+                Hash2SetIteratorClass set_iter();
+                ItemIteratorClass iter(c, ItemIteratorClass::NOPROXY | ItemIteratorClass::NOEPRECORDS);
+                while (ItemClass i = iter.GetNextItem())
+                {
+                  hash_rec.SetLogicalSize(i.LogicalSize());
+                  hash_rec.SetMD5(i.MD5Hash());
+                  hash_rec.SetSHA1(i.SHA1Hash());
+                  if (lib.SearchHashItems(hash_rec, Hash2LibraryClass::MD5, hash_iter))
+                  {
+                    if (hash_iter.GetNext(hash_item))
+                    {
+                      if (hash_item.GetHashSets(lib, set_iter))
+                      {
+                        if (set_iter.GetNext(hashSet))
+                        {
+                          if (hashSet.Category().Compare("Notable") == 0) // Look for 'Notable' hash items
+                          {
+                            BookmarkClass sub = folder.Find(hashSet.Name());
+                            if (!sub)
+                            {
+                              sub = new BookmarkClass(folder, hashSet.Name(), NodeClass::FOLDER);
+                            }
+                            BookmarkItemClass bmi(sub);
+                            bmi.CopyItemData(i);
+                            Console.WriteLine("Bookmarked '{0}' in '{1}'", i.ItemPath(), sub.FullPath());
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                if (c.Write(casePath))
+                {
+                  Console.WriteLine("Case re-saved with updated data.");
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
