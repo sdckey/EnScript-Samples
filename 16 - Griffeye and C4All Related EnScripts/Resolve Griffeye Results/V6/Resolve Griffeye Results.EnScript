@@ -1,0 +1,642 @@
+#ifdef VERSION_6
+
+include "SK_ScriptUpdaterLib" // Private library used only for script updates
+include "..\\Include\\ColumnIndexClass"
+include "..\\Include\\C4AllUtilsClass"
+
+#ifndef StringArray
+  typedef                  String[]                                              StringArray;
+#endif
+
+// #define PRINTHELPTEXT
+
+class MainClass;
+
+class MyDialogClass : DialogClass
+{
+
+  enum                                                                           BookmarkValidationResults
+                                                                                 {
+                                                                                   OK,
+                                                                                   DUPLICATES,
+                                                                                   UNKNOWN_FOLDER,
+                                                                                   NONE_SELECTED
+                                                                                 }
+
+  MainClass                                                                      M;
+
+  CaseClass                                                                      C;
+
+  ButtonClass                                                                    _Help,
+                                                                                 _CheckForUpdate;
+
+  StringEditClass                                                                _BookmarkFolderName,
+                                                                                 _FileList;
+
+  ButtonClass                                                                    _AddFile;
+
+  CheckBoxClass                                                                  _WantUseBookmarks,
+                                                                                 _WantValidateHash;
+
+  MyDialogClass(MainClass m, CaseClass c) :
+    DialogClass(null, m.V.GetNameAndVersion()),
+    M = m,
+    C = c,
+    _Help(this, "Help", START, START, 35, DEFAULT, 0),
+    _CheckForUpdate(this, "Check For Update", 320, SAME, 80, DEFAULT, 0),
+    _BookmarkFolderName(this, "Bookmark Folder Name", START, NEXT, 400, DEFAULT, 0, M.V.BookmarkFolderName, -1, WindowClass::REQUIRED),
+    _FileList(this,
+              "Griffeye Log-Files To Process (semi-colon delimited, one path per line; paths may be double-quoted)",
+              START, NEXT, 400, 75,
+              0,
+              M.FileList,
+              -1,
+              WindowClass::REQUIRED),
+    _AddFile(this, "Add file", 170, NEXT, 50, DEFAULT, 0),
+    _WantUseBookmarks(this, "Resolve files using blue-checked bookmarks?", START, NEXT, DEFAULT, DEFAULT, 0, M.WantUseBookmarks),
+    _WantValidateHash(this, "Validate the MD-5 hash of each located file?", START, NEXT, DEFAULT, DEFAULT, 0, M.WantValidateHash)
+
+
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_Help.Matches(event))
+    {
+      M.V.ShowReportHelpDialog(this);
+    }
+    if (_CheckForUpdate.Matches(event))
+    {
+      M.V.CheckForUpdate(this);
+    }
+    if (_AddFile.Matches(event))
+    {
+      String new_path;
+      if (SystemClass::PathDialog(new_path, "Choose file", "CSV", "CSV Files (*.csv)\t*.csv", SystemClass::OPEN))
+      {
+        String file_list = _FileList.GetText();
+        if (file_list && (file_list[file_list.GetLength() - 1] != '\n'))
+        {
+          file_list = String::Format("{0}\n{1}", file_list, new_path);
+        }
+        else
+        {
+          file_list = String::Format("{0}{1}", file_list, new_path);
+        }
+        _FileList.SetText(file_list);
+      }
+    }
+    DialogClass::ChildEvent(event);
+  }
+
+  virtual void CheckControls()
+  {
+    EnableClose(_FileList.GetText());
+    DialogClass::CheckControls();
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = DialogClass::CanClose();
+    if (retval)
+    {
+      if (!ParseFileList())
+      {
+        ErrorMessage("Can't parse any valid paths from the file-list.");
+        retval = false;
+      }
+    }
+    if (retval)
+    {
+      if (_WantUseBookmarks.GetValue())
+      {
+        if ((BookmarkValidationResults result = ValidateBookmarkSelection()) != BookmarkValidationResults::OK)
+        {
+          if (result == DUPLICATES)
+          {
+            ErrorMessage("One or more of the selected bookmarks has a duplicate comment. Comments must be unique.");
+            retval = false;
+          }
+          else if (result == NONE_SELECTED)
+          {
+            ErrorMessage("No bookmarks selected.");
+            retval = false;
+          }
+          else
+          {
+            ErrorMessage("All selected bookmarks must be in a C4M or C4P Results folder.");
+            retval = false;
+          }
+        }
+      }
+    }
+    return retval;
+  }
+
+  bool ParseFileList()
+  {
+    return C4ALLUtilsClass::ParseFileList(M.Files, _FileList.GetText());
+  }
+
+  BookmarkValidationResults ValidateBookmarkSelection()
+  {
+    BookmarkValidationResults result = OK;
+    StringArray comments();
+    comments.Sort(ArrayClass::SORTENABLED);
+    foreach (BookmarkClass f in C.BookmarkRoot())
+    {
+      if (f.IsFolder() && f.IsSelectedSome())
+      {
+        if (f.Name().Find("C4M Results") == 0 || f.Name().Find("C4P Results") == 0)
+        {
+          foreach (BookmarkClass b in f)
+          {
+            if (!b.IsFolder() && b.IsSelected() && b.GetEntry() && b.Comment())
+            {
+              if (comments.Find(b.Comment()) == -1)
+              {
+                comments.Add(b.Comment());
+              }
+              else
+              {
+                result = DUPLICATES;
+                break;
+              }
+            }
+          }
+          if (result != OK)
+          {
+            break;
+          }
+        }
+        else
+        {
+          result = UNKNOWN_FOLDER;
+          break;
+        }
+      }
+    }
+    if (result == OK)
+    {
+      result = (comments.Count() ? OK : NONE_SELECTED);
+    }
+    return result;
+  }
+}
+
+class MainClass {
+
+  ScriptUpdaterClass::ScriptVersionClass                                         V;
+
+  String                                                                         FileList;
+
+  bool                                                                           WantResolveByDeviceOffset,
+                                                                                 HaveAcknowledgedWarning,
+                                                                                 WantValidateHash,
+                                                                                 WantUseBookmarks;
+
+  uint                                                                           RecordsRead,
+                                                                                 FilesResolved;
+
+  NameListClass                                                                  Files;
+
+  LogClass                                                                       Log;
+
+  BookmarkFolderClass                                                            Folder;
+
+
+
+  MainClass() :
+    V
+    (
+      #28ACDD08B68A4915B08C5BA38C7DF425#,
+      "Resolve Griffeye Results to EnCase 6",
+      4, 0, 0,
+      "This script is designed to bookmark the entries listed in one or more semi-colon-"
+      "delimited log-files created by Griffeye.\n\n"
+
+      "The log-files in question must have been generated as a result of C4ALL processing "
+      "in EnCase 6. This script must also be run in EnCase 6.\n\n"
+
+      "The script requires the following fields to be present in each log file albeit "
+      "they do not have to be in the same order:\n\n"
+
+      "\tCategory\n"
+      "\tDirectory Path\n"
+      "\tFile Name\n"
+      "\tFile Size\n"
+      "\tFile Type\n"
+      "\tFile Location\n"
+      "\tMD5 or Hash (depending on Griffeye version)\n\n"
+
+      "The same compound files must be mounted as were mounted at the time C4ALL performed "
+      "its initial processing.\n\n"
+
+      "The name of each device shown in the entry tree must be the same as when C4ALL was "
+      "run. This needs to be borne in mind if a device had to be reaquired.\n\n"
+
+      "The script will use up to four methods to resolve each entry.\n\n"
+
+      "The first method is to use the bookmarks created by C4ALL during "
+      "processing (if available). This is the quickest and most accurate method. "
+      "It works by mapping the extracted filename of each file listed in the "
+      "Griffeye report to the comment in the associated bookmark. For this to "
+      "work, the bookmarks relating to extracted images must be blue-checked, "
+      "and there must no duplicate comments.\n\n"
+
+      "The second method attempts to match the full-path of each file "
+      "starting from the host device. This works best with top-level entries, i.e. "
+      "entries that aren't in compound files.\n\n"
+
+      "The next method applies a brute-force methodology that tests the name, physical "
+      "location and host-device name of every entry in the case. This is suitable for "
+      "files extracted from mounted compound-files.\n\n"
+
+      "The last method attempts to resolve each entry using its physical location. This "
+      "can be useful when non-ANSI/ASCII characters form part of an entry's path.\n\n"
+
+      "The script provides the option to check the hash of each resolved file to that "
+      "listed in the Griffeye report. This option is highly recommended as it will "
+      "avoid the examiner having to check each file visually, which is particularly "
+      "time consuming when it comes to video files.\n\n"
+
+      "Developed using EnCase 6.19.0.35.\n\n"
+
+      "Report bugs to:\n\n"
+
+      "Simon Key <skey@opentext.com>\n"
+      "Curriculum Developer\n"
+      "OpenText (Reading Office - GSI)\n\n"
+
+      "12th July 2018\n"
+
+    ),
+    Files(),
+    Log(V, LogClass::INFO),
+    WantResolveByDeviceOffset = true,
+    WantValidateHash = true
+  {
+
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(V.ScriptName, options);
+    storage.Value("BookmarkFolderName", V.BookmarkFolderName);
+    storage.Value("FileList", FileList);
+    storage.Value("WantValidateHash", WantValidateHash);
+    storage.Value("WantUseBookmarks", WantUseBookmarks);
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    #ifdef PRINTHELPTEXT
+      Console.WriteLine(HelpText);
+      SystemClass::Exit();
+    #endif
+    #ifdef CREATEPACKAGE
+      V.CreatePackage();
+      SystemClass::Exit();
+    #endif
+    Log.Info("Script started.");
+    if (c)
+    {
+      AccessStorage();
+      MyDialogClass dialog(this, c);
+      if (dialog.Execute() == SystemClass::OK) // Dialog
+      {
+        AccessStorage(StorageClass::WRITE);
+        if (Files.Count())
+        {
+          Folder = new BookmarkFolderClass(c.BookmarkRoot(), V.BookmarkFolderName);
+          foreach (NameListClass file in Files)
+          {
+            if (LocalMachine.PathExists(file.Name()))
+            {
+              ProcessFile(c, file.Name());
+            }
+          }
+          Log.Info("File(s) resolved: {0}/{1}.", FilesResolved, RecordsRead);
+          Log.Info("Script finished.");
+        }
+      }
+      else
+      {
+        Log.Info("Script cancelled.");
+      }
+    }
+    else
+    {
+      Log.Fatal("No case!");
+    }
+  }
+
+  void ProcessFile(CaseClass c, const String &path)
+  {
+    Log.Info(String::Format("Processing '{0}'", path));
+    LocalFileClass input();
+    if (input.Open(path, FileClass::TEXTCRLF))
+    {
+      Log.Info("Log file opened.");
+      input.SetCodePage(CodePageClass::ANSI);
+      String line;
+      bool got_header;
+      ulong lines_read;
+      bool file_is_valid = true;
+      ulong last_pos;
+      ColumnIndexClass index;
+      while (file_is_valid && (input.GetPos() < input.GetSize()))
+      {
+        input.ReadString(line, -1, "\n");
+        SystemClass::StatusRange(String::Format("Processing '{0}'", path.GetFilename()), input.GetSize());
+        SystemClass::StatusInc(input.GetPos() - last_pos);
+        if (got_header)
+        {
+          ProcessLine(c, line, index);
+          ++lines_read;
+          ++RecordsRead;
+        }
+        else
+        {
+          got_header = true;
+          index = new ColumnIndexClass();
+          if (file_is_valid = index.Initialize(line))
+          {
+            Log.Info("Log-file has the required fields.");
+          }
+        }
+      }
+      if (file_is_valid)
+      {
+        Log.Info(String::Format("Records read from log-file: {0}.", lines_read));
+      }
+      else
+      {
+        Log.Warn("Log-file does not have the required fields - please see the help.");
+      }
+    }
+    else
+    {
+      Log.Warn("Unable to open log-file.");
+    }
+  }
+
+  bool CheckHeader(const String &header)
+  {
+    NameListClass fields();
+    fields.Parse(header, ";");
+    return fields.Count() == 57;
+  }
+
+  void ProcessLine(CaseClass c, const String &line, ColumnIndexClass index)
+  {
+    NameListClass fields();
+    fields.Parse(line, ";");
+    String category         = fields.GetChild(index.GetIndex("Category")).Name(),
+           directory_path   = fields.GetChild(index.GetIndex("Directory Path")).Name(),
+           source_file_name = fields.GetChild(index.GetIndex("File Name")).Name(),
+           size             = fields.GetChild(index.GetIndex("File Size")).Name(),
+           type             = fields.GetChild(index.GetIndex("File Type")).Name(),
+           hash             = fields.GetChild(index.GetIndex("hash")).Name(),
+           file_location    = fields.GetChild(index.GetIndex("File Location")).Name();
+    Resolve(c, directory_path, source_file_name, size, type, hash, category, file_location);
+  }
+
+  void PrintDebugInfo(const String &category, const String &directory_path, const String &source_file_name, const String &size, const String &type, const String &file_location, const String &hash)
+  {
+    Console.Write("{0}; ", category);
+    Console.Write("{0}; ", directory_path);
+    Console.Write("{0}; ", source_file_name);
+    Console.Write("{0}; ", size);
+    Console.Write("{0}; ", type);
+    Console.Write("{0}; ", file_location);
+    Console.Write("{0}\n", hash);
+  }
+
+  void Resolve(CaseClass c, const String &directory_path, const String &source_file_name, const String &size_as_string, const String &type, const String &hash, const String &category ,const String &file_location)
+  {
+    Log.Info(String::Format("Processing '{0}'.", source_file_name));
+    ulong physical_location, file_offset, size = ulong::Convert(size_as_string);
+    bool has_offset;
+    String file_name;
+    if (C4ALLUtilsClass::ProcessSourceFileName(source_file_name, physical_location, file_offset, has_offset, file_name))
+    {
+      String primary_device_name = C4ALLUtilsClass::GetPrimaryDeviceName(directory_path);
+      BookmarkFolderClass target_folder;
+      BookmarkFolderClass device_bm_folder = C4ALLUtilsClass::GetBookmarkFolder(Folder, primary_device_name);
+      EntryClass target;
+      if ((WantUseBookmarks && (target = ResolveUsingBookmarks(c, type, file_location, physical_location))) ||
+          (target = ResolveByPath(c, directory_path, file_name, physical_location)) ||
+          (target = ResolveByBruteForce(c, file_name, primary_device_name, physical_location, directory_path)) ||
+          (WantResolveByDeviceOffset && (bool resolved_by_device_offset = (target = ResolveByDeviceOffset(c, primary_device_name, physical_location))))
+         )
+      {
+        Log.Info(String::Format("Successfully resolved '{0}'.", source_file_name));
+        if (resolved_by_device_offset)
+        {
+          target_folder = C4ALLUtilsClass::GetBookmarkFolder(device_bm_folder, "Files Resolved By Device Offset");
+        }
+        else
+        {
+          target_folder = device_bm_folder;
+        }
+        BookmarkFolderClass cat_folder = C4ALLUtilsClass::GetBookmarkFolder(target_folder, category ? category : "<Category Missing>");
+        BookmarkFolderClass validation_folder = cat_folder;
+        bool is_valid = true;
+        if (WantValidateHash)
+        {
+          String log_message;
+          is_valid  = C4ALLUtilsClass::ValidateHash(target, hash, file_offset, size, log_message);
+          if (is_valid)
+          {
+            Log.Info(log_message);
+          }
+          else
+          {
+            Log.Warn(log_message);
+          }
+        }
+        if (!is_valid)
+        {
+          validation_folder = C4ALLUtilsClass::GetBookmarkFolder(cat_folder, "Files With Hash Mismatch");
+          Log.Warn(String::Format("Encountered hash mismatch for file '{0}' located in '{1}'.", source_file_name, target.Name()));
+        }
+        else
+        {
+          ++FilesResolved;
+        }
+        Bookmark(source_file_name, type, directory_path, validation_folder, target, file_offset, size, hash, category, is_valid);
+      }
+      else
+      {
+        Log.Warn(String::Format("Unable to resolve '{0}'.", source_file_name));
+        BookmarkFolderClass unresolved = C4ALLUtilsClass::GetBookmarkFolder(device_bm_folder,
+                                                                            "Files With Hash Mismatch",
+                                                                            "This folder may reference the contents of unmounted compound-files.");
+        unresolved.AddNote(String::Format("Unable to resolve '{0}\\{1}'", directory_path, file_name), 0, 0, 0);
+      }
+    }
+    else
+    {
+      Log.Warn(String::Format("Unable to parse file-name field '{0}'.", source_file_name));
+    }
+  }
+
+  EntryClass ResolveByPath(CaseClass c, const String &directory_path, const String &file_name, ulong physical_location)
+  {
+    EntryClass retval;
+    String device_path = directory_path.SubString(directory_path.Find("\\") + 1),
+           current_case_path = String::Format("{0}\\{1}", device_path, file_name);
+    if ((EntryClass e = c.EntryRoot().Find(current_case_path)) && (EntryClass parent = e.Parent()))
+    {
+      foreach (EntryClass e2 in parent)
+      {
+        if ((e2.Name().Compare(file_name) == 0) && (e2.PhysicalLocation() == physical_location))
+        {
+          Log.Info("File resolved by path.");
+          retval = e2;
+          break;
+        }
+      }
+    }
+    return retval;
+  }
+
+  EntryClass ResolveByDeviceOffset(CaseClass c, const String &primary_device_name, ulong physical_location)
+  {
+    EntryClass retval;
+    foreach (DeviceClass d in c.DeviceRoot())
+    {
+      if (d.Name().Compare(primary_device_name) == 0)
+      {
+        ulong file_offset;
+        if ((EntryClass e = d.GetEntry(physical_location, file_offset)) && !file_offset)
+        {
+          Log.Info("File resolved by device offset.");
+          retval = e;
+          break;
+        }
+      }
+    }
+    return retval;
+  }
+
+  EntryClass ResolveByBruteForce(CaseClass c, const String &file_name, const String &primary_device_name, ulong physical_location, const String &directory_path)
+  {
+    EntryClass retval;
+    forall (EntryClass e in c.EntryRoot())
+    {
+      if ((e.Name().Compare(file_name) == 0) &&
+          (e.PhysicalLocation() == physical_location) &&
+          (C4ALLUtilsClass::GetPrimaryDeviceName(e.FullPath()).Compare(primary_device_name) == 0)
+         )
+      {
+        bool is_valid = true;
+        if ((VolumeClass v = e.GetVolume()) && (EntryClass parent = v.Parent()) && parent.IsMountedVolume())
+        {
+          String current_entry_path_minus_case = C4ALLUtilsClass::GetPathMinusCase(parent.FullPath());
+          is_valid = (directory_path.Find(current_entry_path_minus_case) == directory_path.Find("\\") + 1);
+        }
+        if (is_valid)
+        {
+          Log.Info("File resolved by brute force.");
+          retval = e;
+          break;
+        }
+      }
+    }
+    return retval;
+  }
+
+  bool TypeMatches(BookmarkFolderClass parent, const String &type)
+  {
+    bool retval;
+    if (type.Compare("Image") == 0)
+    {
+      retval = (parent.Name().Find("C4P Results") == 0);
+    }
+    else if (type.Compare("Video") == 0)
+    {
+      retval = (parent.Name().Find("C4M Results") == 0);
+    }
+    return retval;
+  }
+
+  EntryClass ResolveUsingBookmarks(CaseClass c, const String &type, const String &file_location, ulong physical_location)
+  {
+    EntryClass retval;
+    forall (BookmarkClass b in c.BookmarkRoot())
+    {
+      if (!b.IsFolder() && b.IsSelected())
+      {
+        if ((BookmarkFolderClass parent = BookmarkFolderClass::TypeCast(b.Parent())) && TypeMatches(parent, type))
+        {
+          if (b.Comment().Compare(file_location.GetFilename()) == 0)
+          {
+            if ((EntryClass e = b.GetEntry()) && e.PhysicalLocation() == physical_location)
+            {
+              Log.Info("File resolved using bookmark.");
+              retval = e;
+              break;
+            }
+          }
+        }
+      }
+    }
+    return retval;
+  }
+
+  void Bookmark(const String &source_file_name,
+                const String &type,
+                const String &directory_path,
+                BookmarkFolderClass target_folder,
+                EntryClass e,
+                ulong file_offset,
+                ulong size,
+                const String &hash,
+                const String &category,
+                bool is_valid)
+  {
+    uint options = ((type.Compare("Image") == 0) ? BookmarkClass::SHOWPICTURE : 0);
+    BookmarkClass::ViewTypes view_type = ((type.Compare("Image") == 0) ? BookmarkClass::PICTURE : BookmarkClass::NONE);
+    String comment;
+    MemoryFileClass t();
+    if (t.Open(512, FileClass::WRITETEXTCRLF))
+    {
+      t.Write("Type: {0}; ", type);
+      if (WantValidateHash)
+      {
+        if (is_valid)
+        {
+          t.Write("Hash (has been validated): {0}; ", hash);
+        }
+        else
+        {
+          t.Write("Hash (could not be validated): {0}; ", hash);
+        }
+      }
+      else
+      {
+        t.Write("Hash: {0}; ", hash);
+      }
+      t.Write("Category: {0}; ", category);
+      t.Write("File Name: {0}; ", source_file_name);
+      t.Write("Directory Path: {0}; ", directory_path);
+      t.MoveToString(comment);
+    }
+    target_folder.AddBookmark(e, file_offset, size, comment, options, view_type);
+
+  }
+}
+#else
+
+class MainClass
+{
+  void Main()
+  {
+    SystemClass::Message(SystemClass::ICONINFORMATION, "Resolve Griffeye Results to EnCase 6", "This script must be run in EnCase 6.");
+  }
+}
+#endif

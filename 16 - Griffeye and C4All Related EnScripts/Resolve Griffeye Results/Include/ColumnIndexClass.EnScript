@@ -1,0 +1,60 @@
+class ColumnIndexClass : NameListClass
+{
+  uint                                                                           ColumnID;
+
+  ColumnIndexClass() :
+    NameListClass()
+  {
+
+  }
+
+  ColumnIndexClass(ColumnIndexClass parent, const String &name, uint column_id) :
+    NameListClass(parent, name),
+    ColumnID = column_id
+  {
+
+  }
+
+  bool Initialize(const String &header)
+  {
+    NameListClass temp();
+    temp.Parse(header, ";");
+    uint column_id;
+    foreach (NameListClass t in temp)
+    {
+      new ColumnIndexClass(this, t.Name(), column_id++);
+    }
+    return this.Find("Category") &&
+           this.Find("Directory Path") &&
+           this.Find("File Name") &&
+           this.Find("File Size") &&
+           this.Find("File Type") &&
+           this.Find("File Location") &&
+           (this.Find("MD5") || this.Find("Hash Value"));
+  }
+
+  String GetInfo()
+  {
+    return String::Format("{0}:{1}", Name(), ColumnID);
+  }
+
+  uint GetIndex(const String &header)
+  {
+     TraceClass::GetIndex(String::Format("Looking for header '{0}'.", header));
+     uint retval;
+     ColumnIndexClass child;
+     if (header.Compare("hash") == 0)
+     {
+       (child = this.Find("MD5")) || (child = this.Find("Hash Value"));
+     }
+     else
+     {
+       child = this.Find(header);
+     }
+     if (child)
+     {
+       retval = child.ColumnID;
+     }
+     return retval;
+  }
+}
