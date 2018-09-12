@@ -1,0 +1,75 @@
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (!c)
+    {
+      Console.WriteLine("No case!");
+      return;
+    }
+    bool success = true;
+    ProcessorManagerClass processor();
+    processor.Options.General = ProcessorManagerClass::OptionsClass::THUMBS |
+                                ProcessorManagerClass::OptionsClass::MD5    |
+                                ProcessorManagerClass::OptionsClass::SHA1   |
+                                ProcessorManagerClass::OptionsClass::SIG;
+
+    processor.Options.Mount =   ProcessorManagerClass::OptionsClass::MOUNTARCHIVE;
+
+    if (processor.Create(c))
+    {
+      Console.WriteLine("Processor created.");
+      foreach (EvidenceClass ev in c.EvidenceRoot())
+      {
+        if (!processor.Run(ev))
+        {
+          success = false;
+          break;
+        }
+      }
+      if (success)
+      {
+        Console.WriteLine("Evidence processed successfully.");
+        BookmarkClass folder(c.BookmarkRoot(), "Notable Items", NodeClass::FOLDER);
+        Hash2LibraryClass lib();
+        if (lib.Open("D:\\Hash Libraries\\CFI Hash-Source"))
+        {
+          Hash2ItemIteratorClass hash_iter();
+          Hash2ItemRecordClass  hash_rec();
+          Hash2ItemClass hash_item();
+          Hash2SetClass hashSet();
+          Hash2SetIteratorClass set_iter();
+          ItemIteratorClass iter(c, ItemIteratorClass::NOPROXY | ItemIteratorClass::NOEPRECORDS);
+          while (ItemClass i = iter.GetNextItem())
+          {
+            hash_rec.SetLogicalSize(i.LogicalSize());
+            hash_rec.SetMD5(i.MD5Hash());
+            hash_rec.SetSHA1(i.SHA1Hash());
+            if (lib.SearchHashItems(hash_rec, Hash2LibraryClass::MD5, hash_iter))
+            {
+              if (hash_iter.GetNext(hash_item))
+              {
+                if (hash_item.GetHashSets(lib, set_iter))
+                {
+                  if (set_iter.GetNext(hashSet))
+                  {
+                    if (hashSet.Category().Compare("Notable") == 0) // Look for 'Notable' hash items
+                    {
+                      BookmarkClass sub = folder.Find(hashSet.Name());
+                      if (!sub)
+                      {
+                        sub = new BookmarkClass(folder, hashSet.Name(), NodeClass::FOLDER);
+                      }
+                      BookmarkItemClass bmi(sub);
+                      bmi.CopyItemData(i);
+                      Console.WriteLine("Bookmarked '{0}' in '{1}'", i.ItemPath(), sub.FullPath());
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
