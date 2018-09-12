@@ -1,0 +1,97 @@
+class EvidenceItemMonikerArrayListClass : NameListClass
+{
+  EvidenceClass                                                      Evidence;
+  ProcessorManagerClass::OptionsClass::ItemMonikerArray              ItemMonikerArray;
+  EvidenceItemMonikerArrayListClass(EvidenceItemMonikerArrayListClass parent = null, EvidenceClass evidence = null) :
+    super(parent),
+    ItemMonikerArray(),
+    Evidence = evidence
+  {
+    if (evidence)
+    {
+      SetName(evidence.GUID());
+    }
+  }
+  bool AddItemMonikers(CaseClass c, ProcessorManagerClass::OptionsClass options)
+  {
+    return options.AddItemMonikers(c, Evidence, ItemMonikerArray);
+  }
+  bool ClearItemMonikers(CaseClass c, ProcessorManagerClass::OptionsClass options)
+  {
+    return options.ClearItemMonikers(c, Evidence);
+  }
+  void AddMoniker(ItemMonikerClass mon)
+  {
+    ItemMonikerArray.Add(mon);
+  }
+}
+
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    ProcessorManagerClass processor();
+    ItemIteratorClass iter(c, PROMPT, RESULT);
+    if (iter.Name())
+    {
+      EvidenceItemMonikerArrayListClass item_moniker_lists();
+      while(ItemClass i = iter.GetNextItem())
+      {
+        ItemMonikerClass mon();
+        if (i.GetItemMoniker(mon))
+        {
+          EvidenceItemMonikerArrayListClass item_moniker_list = item_moniker_lists.Find(mon.Primary);
+          if (!item_moniker_list)
+          {
+            foreach (EvidenceClass child in c.EvidenceRoot())
+            {
+              if (child.GUID() == mon.Primary)
+              {
+                item_moniker_list = new EvidenceItemMonikerArrayListClass(item_moniker_lists, child);
+                break;
+              }
+            }
+          }
+          item_moniker_list.AddMoniker(mon);
+          Console.WriteLine("Moniker for '{0}' from '{1}' added to array.", i.Name(), item_moniker_list.Evidence.Name());
+        }
+      }
+
+      processor.Options.General = ProcessorManagerClass::OptionsClass::THUMBS |
+                                  ProcessorManagerClass::OptionsClass::MD5    |
+                                  ProcessorManagerClass::OptionsClass::SHA1   |
+                                  ProcessorManagerClass::OptionsClass::SIG;
+      if (processor.Create(c))
+      {
+        Console.WriteLine("Processor created.");
+        bool success = true;
+        foreach (EvidenceItemMonikerArrayListClass item_moniker_list in item_moniker_lists)
+        {
+          Console.WriteLine("Processing '{0}'.", item_moniker_list.Evidence.Name());
+          if (item_moniker_list.AddItemMonikers(c, processor.Options))
+          {
+            if (!processor.Run(item_moniker_list.Evidence))
+            {
+              success = false;
+              break;
+            }
+            if (!item_moniker_list.ClearItemMonikers(c, processor.Options))
+            {
+              success = false;
+              break;
+            }
+          }
+          else
+          {
+            success = false;
+            break;
+          }
+        }
+        if (success)
+        {
+          Console.WriteLine("Success!");
+        }
+      }
+    }
+  }
+}
