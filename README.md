@@ -9,6 +9,10 @@ Each script in this repository has been tested/developed using EnCase 7/8 unless
 
 If you'd like to see an example of how to accomplish a particular thing please feel free to raise an issue and I will look at it as soon as I'm able.
 
+A substantial number of production EnScripts are available on EnCase App Central -
+
+* https://www.guidancesoftware.com/app
+
 ## FAQ
 __Q) Why are many EnScripts in *.EnPack format? Is it to hide the code?__
 
