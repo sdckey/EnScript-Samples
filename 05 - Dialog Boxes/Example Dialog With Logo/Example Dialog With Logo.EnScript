@@ -1,0 +1,39 @@
+include resource ("logo") "ot.png"
+
+class MainClass;
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                 M;
+
+  ImageWindowClass                          _Image;
+
+  MyDialogClass(MainClass m) :
+    super(null, "Example Dialog Containing Logo"),
+    _Image(this, "", START, START, 200, 84, 0, SCALE | HCENTER | VCENTER),
+    M = m
+  {
+    SetViewOptions(VIEWCANCEL);
+    _Image.SetImage(M.Image);
+
+  }
+}
+
+class MainClass {
+
+  ImageClass                                Image;
+
+  MainClass() :
+    Image()
+  {
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if ((FileClass f = SystemClass::GetResourceFile("logo")) && Image.Read(f))
+    {
+      MyDialogClass dialog(this);
+      dialog.Execute();
+    }
+  }
+}
