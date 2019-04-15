@@ -1,0 +1,128 @@
+/*
+ *  This script is designed to locate entries in the current
+ *  case that have a name containing a given string.
+ *
+ *  Having found an entry, the parent folder and its contents
+ *  will be extracted to a nominated output folder. Item-paths
+ *  will be preserved in the process.
+ *
+ *  Zero-length files, overwritten files, files representing
+ *  unallocated clusters, and internal files will not be
+ *  extracted.
+ *
+ *  Feedback will be written to the console.
+ *
+ *  Tested using EnCase 8.08.00.140.
+ *
+ *  Known Limitations
+ *  =================
+ *
+ *  The base output path should be kepy as short as possible
+ *  so as to minimize exceeding the Windows MAX_PATH limit.
+ *
+ *  The script does not support the extraction of files with
+ *  the same name that are in the same folder, e.g. same-named
+ *  current and recovered-deleted files that are siblings.
+ *
+ *  The script may create empty output folders.
+ *
+ *  The script does not iterate records nor does it recurse
+ *  into mounted compound files.
+ *
+ *  There's no guarantee that deleted files will be intact
+ *  due to limitations of the undeletion process.
+ */
+
+class MainClass {
+
+  static const String                                          target_string = "expense";
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      String output_folder;
+      if (SystemClass::FolderDialog(output_folder,
+                                    "Choose base export folder"))
+      {
+        ItemIteratorClass iter(c,
+                               NOPROXY | NORECURSE, // Does not recurse into mounted
+                               ALL);                // compound files.
+        while (EntryClass target = iter.GetNextEntry())
+        {
+          if (target.Name().Contains(target_string) && EntryIsOKToExtract(target))
+          {
+            Console.WriteLine("Found target at '{0}'.",
+                              target.ItemPath());
+            if (EntryClass parent = target.Parent())
+            {
+              String parent_output_path = String::Format("{0}\\{1}",
+                                                         output_folder,
+                                                         parent.ItemPath());
+              if (!LocalMachine.PathExists(parent_output_path)) // Check that we haven't already extracted
+              {                                                 // this folder.
+                Console.WriteLine("Creating new folder at '{0}'. Extracting folder contents...",
+                                  parent_output_path);
+                if (LocalMachine.CreateFolder(parent_output_path,
+                                              NOTIFYSHELL | CREATEFOLDERALL))
+                {
+                  Recurse(parent, parent_output_path);
+                }
+              }
+              else
+              {
+                Console.WriteLine("Already extracted parent folder to '{0}'.",
+                                  parent_output_path);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Recursive function to copy the contents of a given folder
+
+  void Recurse(EntryClass parent, const String &parent_output_path)
+  {
+    foreach (EntryClass child in parent)
+    {
+      String child_output_path = String::Format("{0}\\{1}",
+                                                parent_output_path,
+                                                child.Name());
+      if (EntryIsOKToExtract(child))
+      {
+        EntryFileClass input();
+        if (input.Open(child))
+        {
+          LocalFileClass output();
+          if (output.Open(child_output_path,
+                          WRITE))
+          {
+            output.WriteBuffer(input);
+            Console.WriteLine("\tExtracted file to '{0}'.",
+                              child_output_path);
+          }
+        }
+      }
+      else if (child.IsFolder() && child.FirstChild())    // Sanity check to avoid creating empty folders.
+      {                                                   // Will not work in certain cases, e.g., where
+        if (LocalMachine.CreateFolder(child_output_path)) // the only child is an overwritten file.
+        {
+          Recurse(child, child_output_path);
+        }
+      }
+    }
+  }
+
+  // Function to check we're extracting valid files
+
+  bool EntryIsOKToExtract(EntryClass e)
+  {
+    return !e.IsFolder()      &&
+           !e.IsOverwritten() &&
+           !e.IsUnallocated() &&
+           !e.IsInternal()    &&
+           e.LogicalSize();
+  }
+}
