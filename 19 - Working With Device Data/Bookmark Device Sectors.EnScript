@@ -1,0 +1,196 @@
+/*
+ *  This script demonstrates bookmarking one or more sectors on the currently highlighted
+ *  physical device.
+ *
+ *  Note that resolving a sector to an entry is not always straightforward. Files that
+ *  are hard-linked, resident, compressed, or encrypted all add a degree of complication.
+ *
+ *  If the goal is to read sectors rather than bookmark their content, a cleaner option
+ *  is to open an instance of EntryFileClass on the device in question.
+ *
+ *  Developed using EnCase 8.08.00.140.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Snr. Curriculum Developer - Learning Services (EnCase)
+ *  Reading Office, UK
+ *
+ *  25th April 2019
+ */
+
+#ifndef ULongArray
+  typedef                                    ulong[]                          ULongArray;
+#endif
+
+class MainClass;
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                                    M;
+
+  StringEditClass                                              _SectorLocationsAsStrings;
+
+  MyDialogClass(MainClass m) :
+    super(null, String::Format("{0} - {1}", m.ScriptName, m.Device.Name())),
+    M = m,
+    _SectorLocationsAsStrings(this, "Sector numbers (one per line)",
+                              START, START, 300, 50,
+                              0,
+                              M.SectorLocationsAsStrings,
+                              -1,
+                              REQUIRED)
+  {
+
+  }
+
+  virtual void CheckControls()
+  {
+    EnableClose(_SectorLocationsAsStrings.GetText());
+    super::CheckControls();
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = super::CanClose();
+    if (retval)
+    {
+      if (!GetSectorLocations())
+      {
+        ErrorMessage("Can't get list of valid sector locations.");
+        retval = false;
+      }
+    }
+    return retval;
+  }
+
+  bool GetSectorLocations()
+  {
+    bool retval;
+    if (String text = _SectorLocationsAsStrings.GetText())
+    {
+      NameListClass lines();
+      if (lines.Parse(text, "\n"))
+      {
+        M.SectorLocations = new ULongArray(0, lines.Count());
+        String t;
+        bool success;
+        ulong sector_location;
+        foreach (NameListClass line in lines)
+        {
+          t = line.Name();
+          t.Trim(" ", TRIMSTART | TRIMEND);
+          if (t)
+          {
+            sector_location = ulong::Convert(t, int::DECIMAL, success);
+            if (success)
+            {
+              M.SectorLocations.Add(sector_location);
+            }
+          }
+        }
+        if (M.SectorLocations.Count())
+        {
+          M.SectorLocations.Sort(SORTENABLED | SORTNODUPE);
+          retval = M.SectorLocations.Count();
+        }
+      }
+    }
+    return retval;
+  }
+}
+
+class MainClass {
+
+  String                                                       ScriptName,
+                                                               SectorLocationsAsStrings;
+
+  DeviceClass                                                  Device;
+
+  ULongArray                                                   SectorLocations;
+
+  BookmarkClass                                                Folder;
+
+  MainClass() :
+   ScriptName("Bookmark Device Sectors")
+  {
+
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      long offset, size;
+      if (EntryClass e = EntryClass::TypeCast(c.GetCurrentItem(offset, size)))
+      {
+        if ((Device = e.GetDevice()) && Device.IsPhysical())
+        {
+          Console.WriteLine("Processing device '{0}'.", Device.Name());
+          AccessStorage();
+          MyDialogClass dialog(this);
+          if (dialog.Execute() == SystemClass::OK)
+          {
+            AccessStorage(StorageClass::WRITE);
+            Folder = new BookmarkClass(c.BookmarkRoot(),
+                                       "Bookmarked Sectors",
+                                       NodeClass::FOLDER);
+            Console.WriteLine("Sorted list of sector locations:");
+            foreach (ulong sector_location in SectorLocations)
+            {
+              Console.WriteLine("\t{0}", sector_location);
+            }
+            foreach (ulong sector_location in SectorLocations)
+            {
+              Bookmark(sector_location);
+            }
+          }
+          else
+          {
+            Console.WriteLine("Cancelled.");
+          }
+        }
+        else
+        {
+          Console.WriteLine("Can't get physical device.");
+        }
+      }
+      else
+      {
+        Console.WriteLine("Can't get current entry.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("No case.");
+    }
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass storage(ScriptName, options);
+    storage.Value("SectorLocationsAsStrings", SectorLocationsAsStrings);
+  }
+
+  void Bookmark(ulong sector_location)
+  {
+    ulong file_offset;
+    if (EntryClass e = Device.GetEntry(sector_location * Device.BytesPerSector(),
+                                       file_offset))
+    {
+      Console.WriteLine("Sector {0} resolves to offset {1} in '{2}'",
+                        sector_location,
+                        file_offset,
+                        e.ItemPath());
+      BookmarkDecodeClass dec(Folder);
+      dec.CopyItemData(e);
+      dec.SetDataOffset(file_offset);
+      dec.SetDataSize(1);
+      dec.SetComment(String::Format("Sector: {0}", sector_location));
+    }
+    else
+    {
+      Console.WriteLine("Can't get entry for sector {0}.", sector_location);
+    }
+  }
+}
