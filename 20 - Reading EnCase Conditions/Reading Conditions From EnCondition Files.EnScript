@@ -1,0 +1,132 @@
+/*
+ *  This script demonstrates how to read an EntryClass condition from
+ *  an EnCondition file and use it to filter entries in the current case.
+ *
+ *  Tested under EnCase 8.09.00.192.
+ */
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(SHOWCONSOLE);
+    if (c && c.HasEvidenceList())
+    {
+      String inputPath;
+      if (SystemClass::PathDialog(inputPath,
+                                  "Choose EntryClass EnCondition file",
+                                  "EnCondition",
+                                  "EnCondition Files\t*.EnCondition",
+                                  OPEN))
+      {
+        String source_code,
+               error_message;
+        if (ReadCondition(inputPath, source_code, error_message))
+        {
+          ProgramClass program();
+          /*
+           *  Any condition-dialog will be presented when the condition is constructed
+           *  as part of the next line.
+           */
+          if (program.Compile(typeof(EntryClass), source_code) && program.Constructor())
+          {
+            /*
+             *  Iterate all entries in the case, but (a) don't descent into compound
+             *  files (for speed), and (b) don't perform ad-hoc sig/hash analysis using
+             *  a proxy object.
+             */
+            for (ItemIteratorClass iter(c, NOPROXY | NORECURSE, ALL);
+                 EntryClass e = iter.GetNextEntry();
+                )
+            {
+              if (program.Filter(e))
+              {
+                /*
+                 *  Write the path of the filtered item to the console.
+                 */
+                Console.WriteLine(e.FullPath());
+              }
+            }
+            program.Destructor();
+          }
+          else
+          {
+            Console.WriteLine("Can't compile condition's source-code!");
+          }
+        }
+        else
+        {
+          Console.WriteLine(error_message);
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("This script requires an open case containing "
+                        "at least one item of evidence.");
+    }
+  }
+
+  bool ReadCondition(const String &condition_path,
+                     String &source_code,
+                     String &error_message)
+  {
+    bool retval;
+    LocalFileClass condition_file();
+    if (condition_file.Open(condition_path, TEXTCRLF))
+    {
+      String condition_data;
+      condition_file.ReadString(condition_data);
+      /*
+       * An EnCondition file does not have the "ConditionClass" header-line
+       * required by EnCase when reading a ConditionClass object from a
+       * file using FileClass::ReadNode().
+       *
+       * Because of this, we must synthesize a fully-formed node-file
+       * using a file in memory.
+       *
+       * This is not supported, so use at your own risk!
+       */
+      MemoryFileClass t();
+      if (t.Open(512, WRITETEXTCRLF))
+      {
+        t.WriteLine("ConditionClass");
+        t.WriteLine(condition_data);
+        t.Seek(0);
+        ConditionClass temp_condition();
+        if (t.ReadNode(temp_condition))
+        {
+          if (temp_condition.ClassName().Compare("EntryClass") == 0)
+          {
+            if (temp_condition.GetSourceCode(source_code))
+            {
+              /*
+               * Uncomment the next line to view the condition's
+               * source-code.
+               */
+              Console.WriteLine(source_code);
+              retval = true;
+            }
+          }
+          else
+          {
+            error_message = "Condition must be for entries only.";
+          }
+        }
+        else
+        {
+          error_message = "Can't read condition from file.";
+        }
+      }
+      else
+      {
+        error_message = "Can't open temporary file.";
+      }
+    }
+    else
+    {
+      error_message = "Can't open condition file.";
+    }
+    return retval;
+  }
+}
