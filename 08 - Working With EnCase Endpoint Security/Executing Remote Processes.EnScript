@@ -1,0 +1,260 @@
+class MainClass {
+
+  SafeClass                                  Safe;                  // Object to connect to SAFE
+  RoleClass                                  RoleRoot,              // List of all roles for a given user
+                                             Role;                  // Role user choose to take
+  NetworkClass                               SweepNet;              // List of remote nodes to connect to
+  String                                     NetText,               // Textual list of remote nodes
+                                             ClientReturnAddress,   // Used for NODECLIENT connection options
+                                             StatusBarName,         // Name to be displayed in the status bar
+                                             ExecutablePath,
+                                             CommandLineParameters;
+  int                                        NumConnections,        // Number of SAFE connections to use
+                                             ConnectOptions;        // Connection options: INDIRECT, CLIENTNODELOCAL, CLIENTNODESAFE, NODECLIENT
+
+
+  MainClass() :
+    Safe(),
+    RoleRoot(),
+    Role(),
+    SweepNet(),
+    NumConnections = 1,
+    ConnectOptions = ConnectionClass::CLIENTNODESAFE,
+    StatusBarName = "ConnectionClass Example - Remote Execution"
+  {
+  }
+
+  /**
+  Entry point of the EnScript
+  **/
+  void Main() {
+    SystemClass::ClearConsole();
+    if (Safe.Logon(null))
+    {
+      if (Safe.RemediationAllowed())
+      {
+        if (ShowDiag() == SystemClass::OK)
+        {
+          Sweep();
+          SystemClass::Message(ICONINFORMATION, "Success", String::Format("{0}: Completed successfully!", StatusBarName));
+        }
+      }
+      else
+      {
+        SystemClass::Message(ICONSTOP, "Error", "SAFE does not support remediation - unable to continue.");
+      }
+    }
+  }
+
+  /**
+  This method contains the logic we want to apply to each node on the network
+  **/
+  void Process(ConnectionClass conn, SnapshotClass snap) {
+    ExecuteApplication(conn, snap);
+  }
+
+  /**
+  This *launches* the specified application. Note that successful *execution* is not
+  guaranteed!
+  **/
+  void ExecuteApplication(ConnectionClass conn, SnapshotClass snap)
+  {
+    String application = ExecutablePath.GetFilename();
+    Console.WriteLine("Launching {0} on {1}.", application, snap.IPAddress());
+    ExecuteClass exec();
+    exec.SetApplication(ExecutablePath);
+    exec.SetCommandLine(CommandLineParameters);
+    if (exec.Start(conn, 0))
+    {
+      Console.WriteLine("Launched {0} on {1}. Note that successful execution is not guaranteed!", application, conn.Name());
+    }
+    else
+    {
+      Console.WriteLine(SystemClass::LastError());
+    }
+
+  }
+
+  /**
+   Display dialogs
+  **/
+  int ShowDiag() {
+    RoleRoot = Safe.RoleRoot();
+    DialogClass diag();
+    new NetTextDialogClass(diag, this);
+    return diag.Wizard();
+  }
+
+  /**
+    Code that gets connection and snapshot
+  **/
+  void ReadNetwork(BatchClass batch, SnapshotClass root) {
+    String message,
+           name;
+    DateClass d();
+    do {
+      ConnectionClass conn;
+      SnapshotClass ss(null);
+      message = "";
+      BatchClass::ConnectionTypes reply = batch.GetConnection(conn, ss, name, message, 0);
+      if (reply == BatchClass::BATCHCONNECT) { //successfully connected to remote node
+        Process(conn, ss);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHERROR) { //could not connect to remote node. ss object will have the state of the node
+        d.Now();
+        Console.WriteLine("Could not Connect To {0} SAFE. Error message: ", name, message);
+        SystemClass::StatusInc(1);
+        root.Insert(ss);
+      }
+      else if (reply == BatchClass::BATCHWAIT)
+        SystemClass::Sleep(100);
+      else if (reply == BatchClass::BATCHFATAL) {
+        String err = SystemClass::LastError();
+        Console.WriteLine("The SAFE is not responding: {0}. This Enscript will terminate.", err);
+        return;
+      }
+    } while (reply != BatchClass::BATCHDONE);
+  }
+
+  /** Code that creates a batchclass
+  **/
+  void Sweep() {
+    DateClass now;
+    SnapshotClass newSnaps = new SnapshotClass(null, "Snapshot");
+    BatchClass batch(Safe, Role, NumConnections, ConnectionClass::SNAPALL);
+    if (batch.Add(SweepNet)) {
+      batch.SetMode(ConnectionClass::Options::Convert(ConnectOptions), ClientReturnAddress);
+      if (batch.Start()) {
+        uint machines = batch.TotalMachines();
+        Console.WriteLine("Scanning {0} using {1}", Plural("node", machines), Plural("connection", batch.ConnectionsUsed()));
+        SystemClass::StatusRange(StatusBarName, machines);
+        uint start;
+        now.Now();
+        start = now.GetUnix();
+        ReadNetwork(batch, newSnaps);
+        now.Now();
+        Console.WriteLine("Scan completed in {0} seconds", (now.GetUnix() - start));
+      }
+      else {
+        SystemClass::Message(0, "BatchClass error", SystemClass::LastError());
+      }
+    }
+    else {
+      SystemClass::Message(0, "BatchClass Error", "Unable to add any IPs to the sweep");
+    }
+  }
+
+  String Plural(const String &str, uint n) {
+    return String::Format("{0} {1}{2}", n, str, n == 1 ? "" : "s");
+  }
+
+  /**
+   Turn a string of text into networkclass objects
+  **/
+  bool ParseText(String t) {
+    SweepNet.Close();
+    bool ret = false;
+    while (t) {
+      ret = true;
+      int    end  = t.Find("\n");
+      String line = end < 0 ? t : t.SubString(0, end);
+      int    dash = line.Find("-");
+      if (dash >= 0) {
+        IPClass ip1(ExtractIP(line.SubString(0, dash))),
+                ip2(ExtractIP(line.SubString(dash+1, -1)));
+        if (ip1 && ip2) {
+          NetworkClass n(SweepNet, "IP Range", NodeClass::SELECTED);
+          n.SetStart(ip1);
+          n.SetStop(ip2);
+        }
+        else
+          NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      else if (line != "")  {
+        NetworkClass n(SweepNet, line, NodeClass::SELECTED);
+      }
+      if (end >= 0)
+        t.Delete(0, end+1);
+      else
+        break;
+    }
+    return ret;
+  }
+
+  /**
+   Check for IPs in nettext
+  **/
+  String ExtractIP(const String &s) {
+    String ret = s;
+    ret.Trim(" ", String::TRIMSTART | String::TRIMEND);
+    return ret.IsValidIPAddress() ? ret : "";
+  }
+}
+
+/**
+ Dialog to choose a role and enter nodes to sweep
+**/
+class NetTextDialogClass: DialogClass {
+
+  MainClass                          Data;
+  StaticTextClass                    SafeTextEdit;
+  TreeEditClass                      Tree;
+  StaticTextClass                    Help;
+  StringEditClass                    NetTextEdit;
+  PathEditClass                      ExecutablePathEdit;
+  StringEditClass                    CommandLineParametersEdit;
+
+  NetTextDialogClass(DialogClass diag, MainClass d) :
+    DialogClass(diag, String::Format("{0} Options", d.StatusBarName)),
+    Data = d,
+    SafeTextEdit(this, "", START, 15, 200, 100, 0),
+    Tree(this, "Choose The Role You Want To Assume", NEXT, START, 200, 100, 0, d.RoleRoot, 0),
+    Help(this, "Enter IP addresses or machine names on separate\n"
+                 "lines. Enter ranges on separate lines and delimit\n"
+                 "the start and stop address with a dash (\"-\").\n\n"
+                 "Example:\n\n"
+                 "\tlocalhost\n"
+                 "\t192.168.5.5\n"
+                 "\t192.168.0.16-192.168.0.64\n"
+                 "\t192.168.1.1-192.168.3.255\n"
+                 "\tfd00:0:1000:20:0:0:0:100\n",
+                 START, NEXT, 200, 100, REQUIRED),
+    NetTextEdit(this, "", NEXT, SAME, 200, 100, AUTOVSCROLL | MULTILINE | WANTRETURN, d.NetText, -1, 0),
+    ExecutablePathEdit(this, "Executable path accessible by remote node's system account", START, NEXT, 200, DEFAULT, 0, d.ExecutablePath, FILEOPEN | REQUIRED, "Executable Files\t*.exe"),
+    CommandLineParametersEdit(this, "Command-line path", NEXT, SAME, 200, DEFAULT, 0, d.CommandLineParameters, -1, 0)
+  {
+
+  }
+
+  virtual void Setup() {
+    DialogClass::Setup();
+    SafeTextEdit.SetText("SAFE:\t\t\t\t" + Data.Safe.Name() +
+                         "\nUser:\t\t\t\t" + Data.Safe.UserName() +
+                          "\n\nTotal Connections:\t\t\t" + Data.Safe.TotalConnections() +
+                          "\nActive Connections:\t\t" + Data.Safe.ActiveConnections() +
+                          "\nConnections To Use:\t\t" + Data.NumConnections +
+                          "\n\nRemediation Allowed:\t\t" + (Data.Safe.RemediationAllowed() ? "Yes" : "No") +
+                          "\nSnapshot Allowed:\t\t\t" + (Data.Safe.SnapshotAllowed() ? "Yes" : "No") +
+                          "\n\nSAFE Version:\t\t\t" + Data.Safe.Version()
+                          );
+  }
+
+  virtual void CheckControls() {
+    DialogClass::CheckControls();
+    EnableClose(Tree.GetValue().Parent());
+  }
+
+  virtual bool CanClose() {
+    Output();
+    bool ret = false;
+    if (DialogClass::CanClose()) {
+      Data.Role = RoleClass::TypeCast(Tree.GetValue());
+      ret = Data.ParseText(Data.NetText);
+      if (!ret)
+        ErrorMessage("Please enter a value in the IP-list text-area.");
+    }
+    return ret;
+  }
+}
