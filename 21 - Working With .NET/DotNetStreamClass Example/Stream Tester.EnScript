@@ -1,0 +1,49 @@
+/*
+
+  Demonstrates the use of DotNetStreamClass to pass FileClass
+  objects to a C# .NET assembly.
+
+  This particular example takes the item currently highlighted
+  in EnCase and writes it to a GZIP compressed file on the local
+  system.
+
+  Note that this code is provided as is. There is no error
+  checking or exception handling.
+
+  Tested under EnCase 8.09.00.192.
+
+  Report bugs to -
+
+  Simon Key <skey@opentext.com>
+  Snr. Curriculum Developer
+  OpenText Security (EnCase Training)
+  Reading, UK
+
+  23rd September 2019
+
+*/
+
+assembly "StreamTester.dll"
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      long offset, size;
+      if (ItemClass i = c.GetCurrentItem(offset, size))
+      {
+        ItemCacheClass cache(c);
+        if (FileClass f = cache.GetRawFile(i, 0))
+        {
+          String path = String::Format("{0}.gz", i.Name());
+          if (SystemClass::PathDialog(path, "Choose GZIP-compressed output file", "gz", "GZIP Files\t*.gz", SystemClass::CREATE))
+          {
+            DotNetStreamClass stream(f);
+            StreamTester::GZIPCompressor::Compress(path, stream);
+          }
+        }
+      }
+    }
+  }
+}
