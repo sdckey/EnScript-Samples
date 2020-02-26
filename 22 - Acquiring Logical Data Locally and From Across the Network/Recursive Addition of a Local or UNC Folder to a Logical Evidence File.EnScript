@@ -1,0 +1,154 @@
+/*
+ *  Script demonstrating the recursive addition of a UNC
+ *  or local folder to a logical evidence file (LEF).
+ *
+ *  Tested under EnCase 20.02.00.65.
+ *
+ *  Report bugs to Simon Key <skey@opentext.com>.
+ *
+ *  Wednesday 26th February 2020.
+ */
+
+class MainClass {
+
+  NameListClass                                               Extensions;
+
+  MainClass() :
+    Extensions()
+  {
+    // Some sample extensions that typically relate to small files,
+    // which we shall use for test purposes.
+
+    Extensions.Parse("txt,log,url,ini", ",");
+  }
+
+  // No case needed for this example.
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    String target_folder_path;
+    if (SystemClass::FolderDialog(target_folder_path, "Choose target folder"))
+    {
+      String output_folder;
+      if (LocalMachine.ResolveVariable("USERPROFILE", output_folder))
+      {
+        output_folder = String::Format("{0}\\Desktop", output_folder);
+      }
+      else
+      {
+        output_folder = "C:";
+      }
+      String output_path = String::Format("{0}\\Data.Lx01", output_folder);
+      if (SystemClass::PathDialog(output_path, "Choose LEF file", "Lx01", "Logical Evidence Files\t*.Lx01", CREATE))
+      {
+        uint options = LogicalEvidenceFileClass::DELETEONCLOSEIFEMPTY;
+        if (output_path.GetFileExt().Compare("Lx01") == 0)
+        {
+          options |= LogicalEvidenceFileClass::LEF2;
+        }
+
+        EvidenceFileClass ev();
+        ev.SetCompression(COMPRESSFAST);
+
+        LogicalEvidenceFileClass lef();
+        if (lef.Open(output_path, options, ev))
+        {
+          Process(lef, target_folder_path);
+        }
+      }
+    }
+  }
+
+  void Process(LogicalEvidenceFileClass lef, const String &target_folder_path)
+  {
+    String base_lef_folder_path = target_folder_path;
+
+    // Base path might be a UNC path, in which case we want to
+    // strip the leading backslash characters.
+    //
+    // Alternatively, if it's a DOS path, we want to strip
+    // any colons.
+    //
+    // NOTE: We're not worrying about alternate data streams
+    // or device paths in this example.
+
+    if (base_lef_folder_path.Find("\\\\") == 0)
+    {
+      base_lef_folder_path = base_lef_folder_path.SubString(2);
+    }
+    else
+    {
+      base_lef_folder_path.Trim(":", TRIMALL);
+    }
+    Recurse(lef, base_lef_folder_path, target_folder_path);
+  }
+
+  void Recurse(LogicalEvidenceFileClass lef, const String &current_lef_path, const String &current_target_folder)
+  {
+    DirRootClass dr(LocalMachine);
+    DirectoryClass parent();
+
+    /*
+    Console.WriteLine("Current target folder: {0}", current_target_folder);
+    Console.WriteLine("Current LEF folder:    {0}", current_lef_path);
+    */
+
+    if (dr.GetListing(current_target_folder, parent))
+    {
+      foreach (DirectoryClass d in parent)
+      {
+
+        String current_target_child_path = String::Format("{0}\\{1}", current_target_folder, d.Name()),
+               current_lef_child_path    = String::Format("{0}\\{1}", current_lef_path, d.Name());
+
+        if (d.IsFolder())
+        {
+          Recurse(lef, current_lef_child_path, current_target_child_path);
+        }
+        else
+        {
+          if (ShouldAdd(d))
+          {
+            AddToLef(lef, current_lef_child_path, current_target_child_path);
+          }
+        }
+      }
+    }
+  }
+
+  void AddToLef(LogicalEvidenceFileClass lef, const String &current_lef_child_path, const String &current_target_child_path)
+  {
+    Console.WriteLine("Adding '{0}' to LEF at '{1}'.", current_target_child_path, current_lef_child_path);
+
+    LocalFileClass input();
+    if (input.Open(current_target_child_path))
+    {
+      LogicalEvidenceFileClass::DataClass data();
+      data.Path = current_lef_child_path;
+      if (data.SetTarget(input, MODEFILE))
+      {
+        if (lef.Add(data))
+        {
+          Console.WriteLine("Data added successfully.");
+        }
+        else
+        {
+          Console.WriteLine("WARNING: Couldn't add data to LEF.");
+        }
+      }
+      else
+      {
+        Console.WriteLine("WARNING: Couldn't set LEF data object to target.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("WARNING: Couldn't get target data.");
+    }
+  }
+
+  bool ShouldAdd(DirectoryClass d)
+  {
+    return d.LogicalSize() && Extensions.Find(d.Extension());
+  }
+}
