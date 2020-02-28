@@ -1,0 +1,227 @@
+/*
+ *  Script demonstrating the recursive addition of
+ *  evidence files from a nominated folder.
+ *
+ *  An internal condition allows the user to filter
+ *  the evidence files to be loaded based on name,
+ *  extension, etc.
+ *
+ *  Note that duplicate evidence files will be
+ *  loaded once only.
+ *
+ *  Tested under EnCase 8.11.00.74.
+ *
+ *  Report bugs to Simon Key <skey@opentext.com>.
+ *
+ *  Friday 28th February 2020.
+ */
+
+class MainClass {
+
+  CaseClass                                                   C;
+
+  String                                                      SourceFolder,
+                                                              ScriptName;
+
+  NameListClass                                               ExtensionList;
+
+  ConditionClass                                              Condition;
+
+  ProgramClass                                                Program;
+
+  bool                                                        UseCondition;
+
+  MainClass() :
+    SourceFolder("C:\\"),
+    ScriptName("Recursive Addition of Evidence to Case"),
+    ExtensionList(),
+    Condition(null, "Directory List Condition"),
+    Program()
+  {
+    ExtensionList.Parse("Lx01,L01,Ex01,E01", ",");
+    Condition.SetClassName("DirectoryClass");
+
+    //  FullPath refers to the NodeClass-inherited property,
+    //  not the file-system path. It's being removed here to
+    //  avoid confusion.
+
+    Condition.HideField(DirectoryClass::property(FullPath));
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    Console.WriteLine("Script started.");
+    if (c)
+    {
+      C = c;
+
+      // Load settings
+
+      AccessStorage();
+
+      MyDialogClass dialog(this);
+      if (dialog.Execute() == SystemClass::OK)
+      {
+
+        // Save settings
+
+        AccessStorage(StorageClass::WRITE);
+
+        String source_code;
+        if (!UseCondition || (Condition.GetSourceCode(source_code) &&
+             Program.Compile(typeof(DirectoryClass), source_code) &&
+             Program.Constructor()))
+        {
+          Process();
+          Program.Destructor();
+        }
+        else
+        {
+          Console.WriteLine("WARNING: Can't build filter from condition!");
+        }
+      }
+      else
+      {
+        Console.WriteLine("Script cancelled.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("WARNING: No case!");
+    }
+  }
+
+  void Process()
+  {
+    Recurse(SourceFolder);
+  }
+
+  void Recurse(const String &current_target_folder)
+  {
+    DirRootClass dr(LocalMachine);
+    DirectoryClass parent();
+
+    /*
+    Console.WriteLine("Current target folder: {0}", current_target_folder);
+    */
+
+    if (dr.GetListing(current_target_folder, parent))
+    {
+      foreach (DirectoryClass d in parent)
+      {
+
+        // This is where we construct the path to the directory child currently
+        // being iterated.
+        //
+        // This may be a sub-folder we need to recurse into, or an evidence file
+        // that we need to load.
+
+        String current_target_child_path = String::Format("{0}\\{1}",
+                                                          current_target_folder,
+                                                          d.Name());
+
+        if (d.IsFolder())
+        {
+          Recurse(current_target_child_path);
+        }
+        else
+        {
+          if (ShouldProcess(d))
+          {
+            AddToCase(current_target_child_path);
+          }
+        }
+      }
+    }
+  }
+
+  bool ShouldProcess(DirectoryClass d)
+  {
+    //  The script should never add anything other than an Lx01,L01,Ex01 or file.
+    //
+    //  On top of that, the user may opt to use the condition, in which case the
+    //  citeria used for processing can be further narrowed, e.g., the user can
+    //  specify that only Lx01 files should be processed.
+
+    return ExtensionList.Find(d.Extension()) && (!UseCondition ||
+                                                 Program.Filter(d));
+  }
+
+  void AddToCase(const String &evidence_file_path)
+  {
+    Console.WriteLine("Adding '{0}' to case.", evidence_file_path);
+
+    //  In this example we only want to load the evidence into the case.
+    //  A full mount of each evidence-file will be left to the user in
+    //  the GUI.
+
+    EvidenceOpenClass evopen();
+    evopen.SetMountOptions(MOUNTTOCACHE |
+                           MOUNTFROMCACHE |
+                           MOUNTEVTOCASE |
+                           MOUNTNOPOPUP);
+
+    EvidenceClass ev();
+    ev.SetOpenMode(OPENEVIDENCEFILE);
+    new EvidencePathClass(ev.EvidencePathRoot(), evidence_file_path);
+
+    if (DeviceClass d = ev.GetDevice(C, evopen, false))
+    {
+      Console.WriteLine("Evidence file '{0}' added to case.",
+                        evidence_file_path);
+    }
+    else
+    {
+      Console.WriteLine("WARNING: Couldn't add evidence '{0}' to case.",
+                        evidence_file_path);
+    }
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass s(ScriptName, options);
+    s.Value("SourceFolder", SourceFolder);
+    s.Value("UseCondition", UseCondition);
+    s.Value("Condition", Condition);
+  }
+}
+
+// Dialog
+
+class MyDialogClass : DialogClass
+{
+  MainClass                        M;
+
+  PathEditClass                    _SourceFolder;
+
+  CheckBoxClass                    _UseCondition;
+
+  ButtonClass                      _EditCondition;
+
+  MyDialogClass(MainClass m) :
+    super(null, m.ScriptName),
+    M = m,
+    _SourceFolder(this, "Source folder", START, NEXT, 300, DEFAULT, 0,
+                  M.SourceFolder, REQUIRED | FOLDEROPEN),
+    _UseCondition(this, "Use condition", START, NEXT, DEFAULT, DEFAULT, 0,
+                  M.UseCondition),
+    _EditCondition(this, "Edit condition", 10, NEXT, DEFAULT, DEFAULT, 0)
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_EditCondition.Matches(event))
+    {
+      M.Condition.ShowEditDialog(this);
+    }
+    super::ChildEvent(event);
+  }
+
+  virtual void CheckControls()
+  {
+    _EditCondition.Enable(_UseCondition.GetValue());
+    super::CheckControls();
+  }
+}
