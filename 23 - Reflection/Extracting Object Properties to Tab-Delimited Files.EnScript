@@ -1,0 +1,72 @@
+include "SK_SymbolFactoryLib"
+
+/*
+ *  This script demonstrates the use of reflection to extract object-properties
+ *  to a tab-delimited output file, which will have a *.csv extension for
+ *  compatibility with Excel.
+ *
+ *  The script has been written to iterate entries, but the dynamic nature of
+ *  reflection means that it could be adapted for any object accessible via
+ *  EnScript.
+ *
+ *  The script assumes that an application capable of viewing *.csv files has
+ *  been registered with Windows; it will attempt to open the resultant
+ *  file accordingly.
+ *
+ *  Tested under EnCase 8.11.00.74.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer - EnCase Training
+ *  OpenText UK (Reading office)
+ *
+ *  31st March 2020
+ */
+
+class MainClass {
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      String path;
+      if (SystemClass::PathDialog(path, "Choose output file", "csv", "Tab-delimited output files\t*.csv", CREATE))
+      {
+        LocalFileClass f();
+        if (f.Open(path, WRITETEXTCRLF))
+        {
+          /*
+           *  SymbolFactoryClass is defined in SK_SymbolFactoryLib.
+           */
+
+          SymbolFactoryClass factory(typeof(EntryClass), NodeClass::SELECTED);
+
+          /*
+           *  Should only the name, true-path and last-written properties
+           *  be needed, NodeClass::SELECTED could have been omitted from
+           *  the previous statement and the following line added next:
+           *
+           *  factory.SelectNamed("Name,TruePath,Written");
+           */
+
+          factory.WriteTSVHeaders(f);
+
+          /*
+           *  Note: CURRENTVIEW_SELECTED does not work with records
+           */
+
+          ItemIteratorClass iter(c, NOPROXY | NORECURSE, CURRENTVIEW_SELECTED);
+
+          while (EntryClass e = iter.GetNextEntry())
+          {
+            factory.WriteTSVValues(e, f);
+          }
+
+          f.Close();
+          SystemClass::OpenFile(path);
+        }
+      }
+    }
+  }
+}

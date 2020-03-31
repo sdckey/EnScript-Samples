@@ -1,0 +1,314 @@
+language
+{
+  NOTSET                               "<Not Set>"
+  UNSUPPORTEDENUM                      "<Unsupported enumerated value>"
+  LIST                                 "<List>"
+  EMPTYLIST                            "<Empty List>"
+  UNSUPPORTEDPROP                      "<Unsupported property-type>"
+}
+
+/*
+ *  This class uses reflection to provide access to object-properties
+ *  dynamically.
+ */
+
+class SymbolFactoryClass
+{
+
+   /*
+    *  A list of symbols for a given object.
+    *
+    *  Instances of this class are not meant to be created/manipulated
+    *  directly.
+    */
+
+  class NameSymbolListClass : NameListClass
+  {
+
+    class NameSymbolListHandlerClass : HandlerClass
+    {
+      NameFieldClass                             NameField;
+      StringFieldClass                           SymbolAsStringField;
+
+      NameSymbolListHandlerClass() :
+        super(null, "Symbol", 0, typeof(NameSymbolListClass), "Symbols"),
+        NameField(this, "Property Name", 0, NameSymbolListClass::property(Name), "n"),
+        SymbolAsStringField(this, "Property Type", 0, NameSymbolListClass::property(SymbolAsString), "s")
+      {
+
+      }
+    }
+
+    SymbolClass                                  Symbol;
+
+    property String SymbolAsString()
+    {
+      return Symbol.Name();
+    }
+
+    NameSymbolListClass(NameSymbolListClass parent = null, const String &name = "", uint options = 0, SymbolClass symbol = null) :
+      Symbol = symbol,
+      super(parent, name, options)
+    {
+
+    }
+
+    public void SetSelected(const String &name, bool value = true)
+    {
+      foreach(NameSymbolListClass s in this)
+      {
+        if (s.Name().Compare(name) == 0)
+        {
+          s.AddOptions(NodeClass::SELECTED, value);
+        }
+      }
+    }
+
+    public void SelectNamed(const String &list, const String &separator = ",")
+    {
+      NameListClass itemNames();
+      itemNames.Parse(list, separator);
+      foreach (NameListClass n in itemNames)
+      {
+        if (NameSymbolListClass s = this.Find(n.Name()))
+        {
+          s.AddOptions(NodeClass::SELECTED, true);
+        }
+      }
+    }
+
+    public void RemoveNominated(const String &list, const String &separator = ",")
+    {
+      NameListClass itemNames();
+      itemNames.Parse(list, separator);
+      foreach (NameListClass n in itemNames)
+      {
+        if (NameSymbolListClass s = this.Find(n.Name()))
+        {
+          this.Remove(s);
+        }
+      }
+    }
+  }
+
+  NameSymbolListClass                                          SymbolList;
+
+  /*
+   *  SymbolFactoryClass constuctor.
+   *
+   *  Calls the GetPropertyNames() member to build a list
+   *  of properties for the given symbol, which will
+   *  often be EntryClass or RecordClass, and store
+   *  them in the SymbolList member.
+   *
+   *  Pass NodeClass::SELECTED as the second parameter
+   *  to select all properties in preparation for output.
+   *
+   *  Alternatively, named properties can be selected
+   *  after the list has been built by calling the
+   *  SelectNamed() member function - see below
+   */
+
+  SymbolFactoryClass (SymbolClass s, uint options = 0) :
+    SymbolList()
+  {
+    GetPropertyNames(s, options);
+  }
+
+  private void GetPropertyNames(SymbolClass s, uint options)
+  {
+    RecurseInherited(s, SymbolList, options);
+    GetSymbols(s, SymbolList, options);
+    Sort(SymbolList);
+  }
+
+  private static void Sort(NameListClass list)
+  {
+     ContextClass c(null, "", 0, list);
+     c.SetNodes();
+     c.AddColumn("n", 1);
+     c.Sort();
+     for (uint i; i < c.Count(); i++)
+     {
+       list.Insert(c.GetNode(i));
+     }
+  }
+
+  private void RecurseInherited(SymbolClass symbol, NameSymbolListClass list, uint options)
+  {
+    foreach (SymbolClass::InheritClass i in symbol.InheritList())
+    {
+       GetSymbols(i.Type(), list, options);
+       RecurseInherited(i.Type(), list, options);
+    }
+  }
+
+  private void GetSymbols(SymbolClass symbols, NameSymbolListClass output, uint options)
+  {
+    foreach(SymbolClass s in symbols)
+    {
+      if (s.IsProperty())
+      {
+        if (!s.IsClass())
+        {
+          new NameSymbolListClass(output, s.Name(), options, s.Type());
+        }
+      }
+    }
+  }
+
+  /*
+   *  Function to select properties by name in preparation for output - see above
+   *  and below.
+   */
+
+  public void SelectNamed(static const String &names, const String &separator = ",")
+  {
+    SymbolList.SelectNamed(names, separator);
+  }
+
+  /*
+   *  This method retrieves the properties of a given object as listed
+   *  in the global SymbolList NameSymbolListClass member, which is
+   *  built when this object is contructed.
+   *
+   *  Only selected properties listed in the SymbolList object are
+   *  retrieved.
+   *
+   *  All properties can be selected by passing NodeClass::SELECTED into
+   *  the constructor.
+   *
+   *  Alternatively, named properties can be selected after the list has
+   *  been built by calling the SelectNamed() function passing in a
+   *  delimited list of names.
+   *
+   *  The property-names and property-values are returned by means of a
+   *  NameValueClass variable.
+   */
+
+  public NameValueClass GetPropertiesAsStrings(ObjectClass o)
+  {
+    NameValueClass retval;
+    if (SymbolList.CountAll(NodeClass::SELECTED, NodeClass::COUNTNODES))
+    {
+      retval = new NameValueClass();
+      foreach (NameSymbolListClass nsl in SymbolList)
+      {
+        if (nsl.IsSelected())
+        {
+          variant v;
+          if (PropertyClass p = o.DynamicType().FindProperty(nsl.Name()))
+          {
+            v.GetProperty(o, p);
+            if (v != variant::Null)
+            {
+              String value;
+              switch (nsl.Symbol)
+              {
+                case typeof(HashClass):
+                case typeof(SHA1Class):
+                case typeof(GUIDClass):
+                case typeof(uint):
+                case typeof(int):
+                case typeof(ulong):
+                case typeof(long):
+                case typeof(String):
+                case typeof(double):
+                case typeof(DateClass):
+                  value = v.GetString();
+                  if (!value.GetLength())
+                  {
+                    value = Lang::NOTSET;
+                  }
+                  break;
+                case typeof(bool):
+                  value = v ? Lang::T8158 : Lang::T8159;
+                  break;
+                default:
+                  if (nsl.Symbol.IsEnumType())
+                  {
+                    value = Lang::UNSUPPORTEDENUM;
+                    foreach (SymbolClass es in nsl.Symbol)
+                    {
+                      if (es.HasValue() == v)
+                      {
+                        value = es.Name();
+                      }
+                    }
+                  }
+                  else
+                  {
+                    NodeClass n = v;
+                    if (n)
+                    {
+                      if (n.CountAll(0, NodeClass::COUNTNODES | NodeClass::COUNTFOLDERS | NodeClass::COUNTRECURSIVE))
+                      {
+                        value = Lang::LIST;
+                      }
+                      else
+                      {
+                        value = Lang::EMPTYLIST;
+                      }
+                    }
+                    else
+                    {
+                      value = Lang::UNSUPPORTEDPROP;
+                    }
+                  }
+              }
+              new NameValueClass(retval, nsl.Name(), 0, value);
+            }
+          }
+        }
+      }
+    }
+    return retval;
+  }
+
+  /*
+   *  Function to write the TSV headers for the derived
+   *  property-list.
+   */
+
+  public void WriteTSVHeaders(FileClass f)
+  {
+    foreach (NameSymbolListClass nsl in SymbolList)
+    {
+      if (nsl.IsSelected())
+      {
+        f.Write(nsl.Name());
+        if (nsl == SymbolList.LastChild())
+        {
+          f.Write("\n");
+        }
+        else
+        {
+          f.Write("\t");
+        }
+      }
+    }
+  }
+
+  /*
+   *  Function to obtain the properties for the derived
+   *  property-list and write them as a row to the
+   *  TSV output-file.
+   */
+
+  public void WriteTSVValues(ObjectClass o, FileClass f)
+  {
+    NameValueClass nv = GetPropertiesAsStrings(o);
+    foreach (NameValueClass child in nv)
+    {
+      f.Write(child.Value());
+      if (child == nv.LastChild())
+      {
+        f.Write("\n");
+      }
+      else
+      {
+        f.Write("\t");
+      }
+    }
+  }
+}
