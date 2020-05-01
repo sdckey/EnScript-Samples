@@ -1,0 +1,225 @@
+/*
+ *  Script demonstrating the recursive addition of a UNC
+ *  or local folder to a logical evidence file (LEF) using
+ *  command-line parameters.
+ *
+ *  This script should be run using the EnCase.exe -r (run
+ *  EnScript) and -x (exit after processing) command-line
+ *  switches.
+ *
+ *  Use of the -min command-line switch is recommended
+ *  so as to allow the examiner to maximize EnCase and
+ *  view the console-output for debug purposes.
+ *
+ *  The script requires 3-paramters each of which must be
+ *  surrounded by double-quotes if spaces are present:
+ *
+ *  - The path of the folder to recurse. Drive letters
+ *    should be followed by a colon, but not a backslash,
+ *    e.g., "C:".
+ *
+ *  - A comma-delimited list of file-extensions. Regardless
+ *    of the above comment, this must not contain spaces.
+ *
+ *  - The path to the output logical evidence file, which
+ *    will be compressed by default. The console log-entries
+ *    will be written into a file of the same name but with
+ *    the *.log file-extension appended.
+ *
+ *  See the accompanying batch-file for examples of how
+ *  to invoke EnCase and run the script.
+ *
+ *  Tested under EnCase 20.02.00.185.
+ *
+ *  Report bugs to Simon Key <skey@opentext.com>.
+ *
+ *  Friday 1st May, 2020.
+ */
+
+class MainClass {
+
+  String                                                      ExtensionList,
+                                                              TargetFolderPath,
+                                                              LEFOutputPath,
+                                                              LogOutputPath;
+
+  NameListClass                                               Extensions;
+
+
+  LogicalEvidenceFileClass                                    LEF;
+
+  LocalFileClass                                              LogFile;
+
+  MainClass() :
+    Extensions(),
+    LEF(),
+    LogFile()
+  {
+  }
+
+  bool ParseParameters()
+  {
+    bool retval;
+    NameListClass args = SystemClass::GetArgs();
+    if (args.Count() == 3)
+    {
+      TargetFolderPath = args.GetChild(0).Name();
+      if (LocalMachine.PathExists(TargetFolderPath))
+      {
+        ExtensionList = args.GetChild(1).Name();
+        if (Extensions.Parse(ExtensionList, ","))
+        {
+          if (LEFOutputPath = args.GetChild(2).Name())
+          {
+            retval = true;
+          }
+        }
+      }
+    }
+    return retval;
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    if (ParseParameters())
+    {
+      uint options = LogicalEvidenceFileClass::DELETEONCLOSEIFEMPTY;
+      if (LEFOutputPath.GetFileExt().Compare("Lx01") == 0)
+      {
+        options |= LogicalEvidenceFileClass::LEF2;
+      }
+
+      EvidenceFileClass ev();
+      ev.SetCompression(COMPRESSFAST);
+
+      if (LEF.Open(LEFOutputPath, options, ev))
+      {
+        LogOutputPath = String::Format("{0}.log", LEFOutputPath);
+        if (LogFile.Open(LogOutputPath, WRITETEXTCRLF))
+        {
+          LogFile.WriteLine("Target Folder Path: {0}.", TargetFolderPath);
+          LogFile.WriteLine("Extension List: {0}.", ExtensionList);
+          LogFile.WriteLine("LEF Output Path: {0}.", LEFOutputPath);
+          Process();
+        }
+        else
+        {
+          ErrorMessage(String::Format("Can't open log-file at '{0}'.", LogOutputPath));
+        }
+      }
+      else
+      {
+        ErrorMessage(String::Format("Can't open LEF at '{0}'.", LEFOutputPath));
+      }
+    }
+    else
+    {
+      ErrorMessage("Invalid parameters!");
+    }
+  }
+
+  void ErrorMessage(const String &message)
+  {
+    SystemClass::Message(ICONSTOP, "Error", message);
+  }
+
+  bool CheckParameters()
+  {
+    bool retval;
+
+    return retval;
+  }
+
+  void Process()
+  {
+    String base_lef_folder_path = TargetFolderPath;
+
+    // Base path might be a UNC path, in which case we want to
+    // strip the leading backslash characters.
+    //
+    // Alternatively, if it's a DOS path, we want to strip
+    // any colons.
+    //
+    // NOTE: We're not worrying about alternate data streams
+    // or device paths in this example.
+
+    if (base_lef_folder_path.Find("\\\\") == 0)
+    {
+      base_lef_folder_path = base_lef_folder_path.SubString(2);
+    }
+    else
+    {
+      base_lef_folder_path.Trim(":", TRIMALL);
+    }
+    Recurse(base_lef_folder_path, TargetFolderPath);
+  }
+
+  void Recurse(const String &current_lef_path, const String &current_target_folder)
+  {
+    DirRootClass dr(LocalMachine);
+    DirectoryClass parent();
+
+    if (dr.GetListing(current_target_folder, parent))
+    {
+      foreach (DirectoryClass d in parent)
+      {
+
+        String current_target_child_path = String::Format("{0}\\{1}", current_target_folder, d.Name()),
+               current_lef_child_path    = String::Format("{0}\\{1}", current_lef_path, d.Name());
+
+        if (d.IsFolder())
+        {
+          Recurse(current_lef_child_path, current_target_child_path);
+        }
+        else
+        {
+          if (ShouldAdd(d))
+          {
+            AddToLef(current_lef_child_path, current_target_child_path);
+          }
+        }
+      }
+    }
+  }
+
+  void AddToLef(const String &current_lef_child_path, const String &current_target_child_path)
+  {
+    Log(String::Format("Adding '{0}' to LEF at '{1}'.", current_target_child_path, current_lef_child_path));
+    LocalFileClass input();
+    if (input.Open(current_target_child_path))
+    {
+      LogicalEvidenceFileClass::DataClass data();
+      data.Path = current_lef_child_path;
+      if (data.SetTarget(input, MODEFILE))
+      {
+        if (LEF.Add(data))
+        {
+          Log("Data added successfully.");
+        }
+        else
+        {
+          Log("WARNING: Couldn't add data to LEF.");
+        }
+      }
+      else
+      {
+        Log("WARNING: Couldn't set LEF data object to target.");
+      }
+    }
+    else
+    {
+      Log("WARNING: Couldn't get target data.");
+    }
+  }
+
+  void Log(const String &message)
+  {
+    Console.WriteLine(message);
+    LogFile.WriteLine(message);
+  }
+
+  bool ShouldAdd(DirectoryClass d)
+  {
+    return d.LogicalSize() && Extensions.Find(d.Extension());
+  }
+}
