@@ -1,0 +1,53 @@
+class MainClass {
+  class Matching_Message_IDsClass {
+    class FilterDialogClass: DialogClass {
+      StringEditClass Variable;
+
+      FilterDialogClass(DialogClass parent, Matching_Message_IDsClass v):
+        DialogClass(parent, "Edit Conditions"),
+          Variable(this, "Text find", START, NEXT, 200, 102, 0, v.Variable, 512, 0)
+      {
+      }
+    }
+    SearchClass Search;
+    String      Variable;
+
+    Matching_Message_IDsClass():
+      Search(),
+      Variable = "<Enter message-IDs, one per line>"
+    {
+      FilterDialogClass dialog(null, this);
+      if (dialog.Execute() != SystemClass::OK)
+        SystemClass::Exit();
+      NameListClass list();
+      list.Parse(Variable, "\n");
+      foreach (NameListClass n in list)
+          Search.AddKeyword(n.Name(), KeywordClass::UNICODE);
+      Search.Create();
+    }
+
+    bool Main(DataPropertyClass e) {
+      return e.Name().Compare("Internet Message ID") == 0 && Search.Find(e.Text()) >= 0;
+    }
+  }
+
+  Matching_Message_IDsClass Matching_Message_IDsData;
+
+  bool Matching_Message_IDs(DataPropertyClass root) {
+    forall (DataPropertyClass e in root)
+      if (Matching_Message_IDsData.Main(e))
+        return true;
+    return false;
+  }
+
+
+  MainClass():
+    Matching_Message_IDsData()
+  {
+  }
+
+  bool Main(RecordClass e) {
+    return Matching_Message_IDs(e.DataPropertyRoot());
+  }
+}
+

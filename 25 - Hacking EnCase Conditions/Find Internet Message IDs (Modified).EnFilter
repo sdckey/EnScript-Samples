@@ -1,0 +1,125 @@
+
+/*
+ *  Array-types must be declared using typedef
+ */
+
+  typedef                                                  String[]                                              StringArray;
+
+class MainClass
+{
+  class Matching_Message_IDsClass
+  {
+    class FilterDialogClass: DialogClass
+    {
+      StringEditClass Variable;
+
+      FilterDialogClass(DialogClass parent, Matching_Message_IDsClass v):
+        DialogClass(parent, "Edit Conditions"),
+          Variable(this, "Text find", START, NEXT, 200, 102, 0, v.Variable, -1, 0) // -1 = maximum possible
+                                                                                   //      string length
+      {
+      }
+    }
+
+    SearchClass                                              Search;
+    String                                                   Variable;
+
+  /*
+   *  The following variables are string arrays used to store the message-IDs
+   *  that have been found as well as those that haven't
+   */
+
+    StringArray                                              OutstandingMessageIDs,
+                                                             FoundMessageIDs;
+
+    Matching_Message_IDsClass():
+      Search(),
+      Variable = "<Enter message-IDs, one per line>",
+      OutstandingMessageIDs(), // Instantiate the message-ID arrays
+      FoundMessageIDs()
+    {
+      FilterDialogClass dialog(null, this);
+      if (dialog.Execute() != SystemClass::OK)
+        SystemClass::Exit();
+      NameListClass list();
+      list.Parse(Variable, "\n");
+      foreach (NameListClass n in list)
+      {
+          Search.AddKeyword(n.Name(), KeywordClass::UNICODE);
+          OutstandingMessageIDs.Add(n.Name());
+      }
+      OutstandingMessageIDs.Sort(SORTENABLED | SORTNODUPE);
+      Search.Create();
+    }
+
+    bool Main(DataPropertyClass e) {
+
+    /*
+     *  This function has been modified so as to hold the result of finding a message-ID
+     *  in a variable. If the result is true, the responsive search-ID is obtained from
+     *  the search-engine as the name property of the KeywordClass object added to find
+     *  it. The message-ID is removed from the array of outstanding message-IDs and added
+     *  to the array of the ones that have been found.
+     */
+
+      bool result = e.Name().Compare("Internet Message ID") == 0 && Search.Find(e.Text()) >= 0;
+      if (result)
+      {
+        SearchClass::HitArrayClass hits = Search.GetHits();
+        SearchClass::HitClass hit = hits[0];
+        String responsive_message_id = hit.Keyword().Name();
+        FoundMessageIDs.Add(responsive_message_id);
+        if ((int found_index = OutstandingMessageIDs.Find(responsive_message_id)) >= 0)
+        {
+          OutstandingMessageIDs.Delete(found_index);
+        }
+      }
+      return result;
+    }
+  }
+
+  Matching_Message_IDsClass Matching_Message_IDsData;
+
+  bool Matching_Message_IDs(DataPropertyClass root) {
+    forall (DataPropertyClass e in root)
+      if (Matching_Message_IDsData.Main(e))
+        return true;
+    return false;
+  }
+
+
+  MainClass():
+    Matching_Message_IDsData()
+  {
+    SystemClass::ClearConsole(1);
+  }
+
+  bool Main(RecordClass e) {
+    return Matching_Message_IDs(e.DataPropertyRoot());
+  }
+
+  void WriteArrayToConsole(StringArray array)
+  {
+    if (array.Count())
+    {
+      foreach (String s in array)
+      {
+        Console.WriteLine("\t{0}", s);
+      }
+    }
+    else
+    {
+      Console.WriteLine("\t<None>");
+    }
+  }
+
+  ~MainClass()
+  {
+    Matching_Message_IDsData.FoundMessageIDs.Sort(SORTENABLED | SORTNODUPE);
+    Console.WriteLine("Responsive message-IDs:");
+    WriteArrayToConsole(Matching_Message_IDsData.FoundMessageIDs);
+    Console.WriteLine("Non-responsive message-IDs:");
+    WriteArrayToConsole(Matching_Message_IDsData.OutstandingMessageIDs);
+  }
+}
+
