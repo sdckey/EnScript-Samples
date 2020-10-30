@@ -1,0 +1,135 @@
+class MainClass {
+
+ /*
+  * This script uses the evidence processor to perform hash and
+  * signature analysis of the evidence in the current case before
+  * bookmarking those items identified as aliases having a JPEG
+  * file-signature.
+
+  * The processor-options file (with a *.EnProc file-extension)
+  * should be in EnCase's "ProcessorOptions" folder. Processor-
+  * options files can be created using the Evidence Processor
+  * dialog.
+  *
+  * Tested under EnCase 20.3.0.214.
+  *
+  * Report bugs to Simon Key <skey@opentext.com>.
+  *
+  * 30th October 2020.
+  */
+
+  static const uint                                                   timeout_in_minutes = 30;
+
+  static const String                                                 enproc_file_name = "Hash And Signature Analysis.EnProc";
+
+  uint                                                                Count;
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    Console.WriteLine("Script started.");
+    if (c && c.EvidenceRoot().Count())
+    {
+      String ep_options_path = GetEPOptionsPath();
+
+      if (LocalMachine.PathExists(ep_options_path))
+      {
+        String error_message;
+        if (ProcessEvidence(c, ep_options_path, error_message))
+        {
+          Process(c);
+          Console.WriteLine("Items bookmarked: {0}.", Count);
+          Console.WriteLine("Script finished.");
+        }
+        else
+        {
+          Console.WriteLine(error_message);
+        }
+      }
+      else
+      {
+        Console.WriteLine("Can't get processor options (*.EnProc) file.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("No case or no evidence in the case!");
+    }
+  }
+
+  void Process(CaseClass c)
+  {
+    BookmarkClass folder(c.BookmarkRoot(), "Items Identified as JPEG Aliases", NodeClass::FOLDER);
+    ItemIteratorClass iter(c, NOPROXY, ALL);
+    while (ItemClass i = iter.GetNextItem())
+    {
+      if ((i.SignatureResult() == ItemClass::SIG_ALIAS) &&
+          (i.Category() == ItemClass::PICTURE)          &&
+          (i.Signature().Find("JPEG") == 0)
+         )
+      {
+        BookmarkDecodeClass dec(folder);
+        dec.CopyItemData(i);
+        dec.SetCodingType(PICTURE);
+        SystemClass::StatusMessage(String::Format("Items bookmarked: {0}", ++Count));
+      }
+    }
+  }
+
+  bool ProcessEvidence(CaseClass c, const String &ep_options_path, String &error_message)
+  {
+    bool all_evidence_processed;
+    EPManagerClass manager();
+
+   /*
+    * Process all evidence in the current case
+    */
+
+    if (manager.AddProcessingJobs(c, c.EvidenceRoot(), ep_options_path))
+    {
+      uint timeout_in_seconds = timeout_in_minutes * 60;
+      bool over_time_limit;
+
+      DateClass start(),
+                now();
+
+      start.Now();
+
+      do
+      {
+        all_evidence_processed = true;
+        foreach (EvidenceClass ev in c.EvidenceRoot())
+        {
+          all_evidence_processed = all_evidence_processed && ev.IsProcessed();
+          if (!all_evidence_processed)
+          {
+            break;
+          }
+        }
+        now.Now();
+        if ((now.GetUnix() - start.GetUnix()) > timeout_in_seconds)
+        {
+          over_time_limit = true;
+          break;
+        }
+        SystemClass::Sleep(1000);
+      }
+      while (!all_evidence_processed && !over_time_limit);
+      if (!all_evidence_processed)
+      {
+        error_message = "Time limit exceeded!";
+      }
+    }
+    else
+    {
+      error_message = "Unable to add processing job!";
+    }
+    return all_evidence_processed;
+  }
+
+  String GetEPOptionsPath()
+  {
+    String unc_app_path = String::Format("\\\\127.0.0.1\\{0}", SystemClass::AppPath());
+    unc_app_path.Replace(":", "$");
+    return String::Format("{0}\\ProcessorOptions\\{1}", unc_app_path, enproc_file_name);
+  }
+}
