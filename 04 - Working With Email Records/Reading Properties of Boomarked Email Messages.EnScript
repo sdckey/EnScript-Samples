@@ -1,0 +1,59 @@
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      ItemCacheClass cache(c);
+      forall (BookmarkClass b in c.BookmarkRoot())
+      {
+        if (!b.IsFolder())
+        {
+          if (RecordClass r = RecordClass::TypeCast(cache.GetMountedItem(b)))
+          {
+            if (r.IsEmail())
+            {
+              Console.WriteLine("Processing '{0}'\n", r.Name());
+
+              // Output named string property
+
+              // First example
+
+              DataPropertyClass::PropertyFields field = DataPropertyClass::PR_INTERNET_MESSAGE_ID;
+
+              // Second example
+
+              // DataPropertyClass::PropertyFields field = DataPropertyClass::PR_ENCASE_FROM;
+
+              Console.Write(String::Format("{0}: ", DataPropertyClass::PropertyFields::DisplayText(field)));
+
+              if (String s = r.GetField(field))
+              {
+                Console.WriteLine(s);
+              }
+              else
+              {
+                Console.WriteLine("<Can't get value>");
+              }
+
+              Console.WriteLine();
+
+              // Output all data-property fields
+
+              forall (DataPropertyClass d in r.DataPropertyRoot())
+              {
+                if (!d.IsFolder())
+                {
+                  Console.WriteLine(d.FullPath());
+                  Console.WriteLine(d.Text());
+                  Console.WriteLine();
+                }
+              }
+
+              Console.WriteLine();
+            }
+          }
+        }
+      }
+    }
+  }
+}
