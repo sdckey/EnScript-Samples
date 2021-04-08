@@ -1,0 +1,284 @@
+class MainClass {
+
+ /*
+  * This script will load the evidence files from a nominated
+  * folder into a new case and then invoke the evidence processor
+  * to perform a hash and signature analysis. Alias files having
+  * a JPEG file-signature will be bookmarked after which the case
+  * will be saved.
+  *
+  * The case path and evidence-folder can be specified via the
+  * command-line, in which case the script will not prompt for
+  * them. A batch-file with example command-line options should
+  * have accompanied this script.
+  *
+  * Note that the evidence-folder dialog-box may pop-up out of
+  * view behind the main EnCase window.
+  *
+  * The processor-options file (with a *.EnProc file-extension)
+  * should be in EnCase's "ProcessorOptions" folder. Processor-
+  * options files can be created using the Evidence Processor
+  * dialog.
+  *
+  * Please read the inline comments for additional information.
+  *
+  * Tested under EnCase 21.01.00.68.
+  *
+  * Report bugs to Simon Key <skey@opentext.com>.
+  *
+  * 8th April, 2021.
+  */
+
+  static const uint                                                   timeout_in_minutes = 60;
+
+  static const String                                                 enproc_file_name = "Hash And Signature Analysis.EnProc";
+
+  String                                                              EvidenceFolder, // Sub-folders will not be processed
+                                                                      CasePath,
+                                                                      CaseName;
+
+  uint                                                                Count;
+
+  CaseClass                                                           C;
+
+  NameListClass                                                       EvExtensions;
+
+  MainClass() :
+    EvExtensions()
+  {
+    EvExtensions.Parse("Lx01,L01,Ex01,E01", ",");
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    Console.WriteLine("Script started.");
+    if (GetEvidenceFolderAndCasePath())
+    {
+      if (GetCase())
+      {
+        String ep_options_path = GetEPOptionsPath();
+
+        if (LocalMachine.PathExists(ep_options_path))
+        {
+          String error_message;
+          if (ProcessEvidence(ep_options_path, error_message))
+          {
+            Process();
+            Console.WriteLine("Items bookmarked: {0}.", Count);
+            if (C.Write(CasePath))
+            {
+              Console.WriteLine("Case saved.");
+              Console.WriteLine("Script finished.");
+            }
+            else
+            {
+              Console.WriteLine("Unable to save case.");
+            }
+          }
+          else
+          {
+            Console.WriteLine(error_message);
+          }
+        }
+        else
+        {
+          Console.WriteLine("Can't get the processor options (*.EnProc) file.");
+        }
+      }
+      else
+      {
+        Console.WriteLine("No case or evidence in the case!");
+      }
+    }
+    else
+    {
+      Console.WriteLine("Can't identify the case and evidence-folder paths.\n\n"
+
+                        "Make sure you're using the correct command-line parameters."
+                       );
+    }
+  }
+
+  bool GetEvidenceFolderAndCasePathFromDialogs()
+  {
+    return SystemClass::PathDialog(CasePath, "Choose case path", "case", "EnCase Case Files\t*.case", CREATE) &&
+           SystemClass::FolderDialog(EvidenceFolder, "Choose evidence folder");
+  }
+
+  bool GetEvidenceFolderAndCasePath()
+  {
+    bool retval;
+    NameListClass cmd_args = SystemClass::GetArgs();
+    if (cmd_args.Count() == 2)
+    {
+      CasePath       = cmd_args.GetChild(0).Name();
+      EvidenceFolder = cmd_args.GetChild(1).Name();
+      if (LocalMachine.PathExists(EvidenceFolder))
+      {
+        String case_folder = CasePath.GetFilePath();
+        if (LocalMachine.PathExists(case_folder))
+        {
+          retval = true;
+        }
+      }
+    }
+    else
+    {
+      retval = GetEvidenceFolderAndCasePathFromDialogs();
+    }
+    return retval;
+  }
+
+  bool GetCase()
+  {
+    CaseName  = CasePath.GetFilename();
+
+    String case_folder = CasePath.GetFilePath(),
+           evidence_cache_folder = String::Format("{0}\\EvidenceCache", case_folder);
+
+    if ((int pos = CaseName.Find(".")) > 0)
+    {
+      CaseName =  CaseName.SubString(0, pos);
+      C = new CaseClass(null, CaseName);
+      C.SetUseBaseFolder(true);
+      C.SetPrimaryEvFolder(evidence_cache_folder);
+      if (AddEvidence())
+      {
+        return C.Write(CasePath);
+      }
+    }
+    return false;
+  }
+
+  bool AddEvidencePathToCase(EvidencePathClass path)
+  {
+    EvidenceOpenClass evopen();
+    evopen.SetMountOptions(MOUNTTOCACHE | MOUNTFROMCACHE | MOUNTNOPOPUP); // Will not handle BitLocker, etc.
+    EvidenceClass ev();
+    ev.SetOpenMode(OPENEVIDENCEFILE);
+    new EvidencePathClass(ev.EvidencePathRoot(), path.Name());
+    return ev.AddToCase(C, evopen);
+  }
+
+  bool AddEvidenceListToCase(EvidencePathClass ev_list)
+  {
+    foreach (EvidencePathClass path in ev_list)
+    {
+      if (!AddEvidencePathToCase(path))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool AddEvidence()
+  {
+    DirectoryClass dir();
+    DirRootClass dir_root(LocalMachine);
+    if (dir_root.GetListing(EvidenceFolder, dir))
+    {
+      EvidencePathClass ev_list();
+      foreach (DirectoryClass d in dir)
+      {
+        if (EvExtensions.Find(d.Extension()))
+        {
+          new EvidencePathClass(ev_list, String::Format("{0}\\{1}", EvidenceFolder, d.Name()));
+        }
+      }
+      if (ev_list.Count())
+      {
+        return AddEvidenceListToCase(ev_list);
+      }
+    }
+    return false;
+  }
+
+
+
+  void Process()
+  {
+    BookmarkClass folder(C.BookmarkRoot(), "Items Identified as JPEG Aliases", NodeClass::FOLDER);
+    ItemIteratorClass iter(C, NOPROXY, ALL);
+    while (ItemClass i = iter.GetNextItem())
+    {
+      if ((i.SignatureResult() == ItemClass::SIG_ALIAS) &&
+          (i.Category() == ItemClass::PICTURE)          &&
+          (i.Signature().Find("JPEG") == 0)
+         )
+      {
+        BookmarkDecodeClass dec(folder);
+        dec.CopyItemData(i);
+        dec.SetCodingType(PICTURE);
+        Console.WriteLine("Bookmarked '{0}'.", i.ItemPath());
+        SystemClass::StatusMessage(String::Format("Items bookmarked: {0}", ++Count));
+      }
+    }
+  }
+
+  bool ProcessEvidence(const String &ep_options_path, String &error_message)
+  {
+    bool all_evidence_processed;
+    EPManagerClass manager();
+
+   /*
+    * Process all evidence in the  case
+    */
+
+    if (manager.AddProcessingJobs(C, C.EvidenceRoot(), ep_options_path))
+    {
+      uint timeout_in_seconds = timeout_in_minutes * 60;
+      bool over_time_limit;
+
+      DateClass start(),
+                now();
+
+      start.Now();
+
+      do
+      {
+        /*
+         * Can't find a way to check the processing status other than
+         * by closing and re-opening the case.
+         */
+
+        C = new CaseClass(null, CaseName);
+        C.Read(CasePath);
+
+        all_evidence_processed = true;
+        foreach (EvidenceClass ev in C.EvidenceRoot())
+        {
+          all_evidence_processed = all_evidence_processed && ev.IsProcessed();
+          if (!all_evidence_processed)
+          {
+            break;
+          }
+        }
+        now.Now();
+        if ((now.GetUnix() - start.GetUnix()) > timeout_in_seconds)
+        {
+          over_time_limit = true;
+          break;
+        }
+        SystemClass::Sleep(1000);
+      }
+      while (!all_evidence_processed && !over_time_limit);
+      if (!all_evidence_processed)
+      {
+        error_message = "Time limit exceeded!";
+      }
+    }
+    else
+    {
+      error_message = "Unable to add processing job!";
+    }
+    return all_evidence_processed;
+  }
+
+  String GetEPOptionsPath()
+  {
+    String unc_app_path = String::Format("\\\\127.0.0.1\\{0}", SystemClass::AppPath());
+    unc_app_path.Replace(":", "$");
+    return String::Format("{0}\\ProcessorOptions\\{1}", unc_app_path, enproc_file_name);
+  }
+}
