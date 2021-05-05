@@ -1,6 +1,6 @@
 /*
- *  This EnScript demonstrates how to use XmlNodeClass and XmlParser
- *  class to construct an XML document and write it to a file.
+ *  This EnScript demonstrates how to use XmlNodeClass and
+ *  XmlParserClass to construct an XML document and write it to a file.
  *
  *  The script iterates tagged entries and records (artifacts) writing
  *  certain properties to the XML file in the process.
