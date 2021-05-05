@@ -1,0 +1,210 @@
+/*
+ *  This EnScript demonstrates how to use XmlNodeClass and XmlParser
+ *  class to construct an XML document and write it to a file.
+ *
+ *  The script iterates tagged entries and records (artifacts) writing
+ *  certain properties to the XML file in the process.
+ *
+ *  Feedback is provided via the console.
+ *
+ *  Tested under EnCase 21.01.00.68.
+ *
+ *  Report bugs to Simon Key <skey@opentext.com>.
+ *
+ *  5th May, 2021
+ */
+
+class XmlHelperClass
+{
+
+  XmlNodeClass                        Doc,
+                                      Root;
+
+  String                              OutputPath;
+
+  XmlHelperClass(const String &root_element_name, const String &output_path) :
+    Doc(),
+    Root(Doc, root_element_name, 0, "", ELEMENT),
+    OutputPath = output_path
+  {
+
+  }
+
+  /*
+   * NOTE: Reflection may provide a better way of accessing properties
+   *       particularly when the developer doesn't wish to hard-code
+   *       each one's symbol.
+   */
+
+  bool WriteItem(ItemClass i)
+  {
+    bool retval;
+
+    /*
+     * Monikers identify each item in the case; they are tied to the
+     * case's evidence cache and can be resolved back to the item in
+     * question using an instance of ItemCacheClass.
+     *
+     * Monikers are used because other methods are problematic. Item-
+     * paths, for example, can be duplicated due to recovered-deleted
+     * files; also because evidence-file names do not have to be
+     * unique in a case.
+     */
+
+    ItemMonikerClass mon();
+    if (i.GetItemMoniker(mon))
+    {
+      XmlNodeClass item_element(Root, "Item", 0, "", ELEMENT);
+      WriteType(item_element, i);
+      WriteProperty(item_element, "Name", i.Name());
+      WriteProperty(item_element, "Extension", i.Extension());
+      WriteProperty(item_element, "ItemPath", i.ItemPath());
+      WriteDescription(item_element, i);
+      WriteProperty(item_element, "IsFolder", i.IsFolder() ? "Yes" : "No");
+      WriteDate(item_element, i, "Created", ItemClass::CREATED);
+      WriteDate(item_element, i, "Written", ItemClass::WRITTEN);
+      WriteDate(item_element, i, "Accessed", ItemClass::ACCESSED);
+      WriteProperty(item_element, "LogicalSize", i.LogicalSize());
+      WriteProperty(item_element, "PrimaryDeviceGUID", mon.Primary);
+      WriteProperty(item_element, "DeviceGUID", mon.Device);
+      WriteProperty(item_element, "ItemGUID", mon.Item);
+      retval = true;
+    }
+    return retval;
+  }
+
+  void WriteDescription(XmlNodeClass folder, ItemClass i)
+  {
+    String description;
+
+    /*
+     * All records are stored as entries in LEFs, but not all entries are
+     * records!
+     *
+     * Records do not have a 'Description' property.
+     */
+
+    if (!RecordClass::TypeCast(i) && (EntryClass e = EntryClass::TypeCast(i)))
+    {
+      description = e.Description();
+    }
+    WriteProperty(folder, "Description", description);
+  }
+
+  void WriteType(XmlNodeClass folder, ItemClass i)
+  {
+    String type = (RecordClass::TypeCast(i) ? "Record" : "Entry");
+    WriteProperty(folder, "ItemType", type);
+  }
+
+  void WriteDate(XmlNodeClass folder, ItemClass i, const String &xml_tag, ItemClass::DateTypes dt)
+  {
+    /*
+     * Should write dates as UTC, but be sure to check!
+     */
+
+    DateClass d() = i.GetDate(dt, UNADJUSTED);
+    WriteProperty(folder, xml_tag, d.ISOString(UTC));
+  }
+
+  void WriteProperty(XmlNodeClass folder, const String &property_name, const String &value)
+  {
+    XmlNodeClass property_element(folder, property_name, 0, "", ELEMENT),
+                 property_value(property_element, value, 0, value, TEXT);
+  }
+
+  bool SaveFile(String &error_message)
+  {
+    bool retval;
+    LocalFileClass lf();
+    if (lf.Open(OutputPath, WRITETEXTCRLF))
+    {
+      XmlParserClass parser();
+      if (parser.SaveFile(Doc, lf, "", VALIDATE_CHARS | LINE_BREAKS))
+      {
+        error_message = String::Format("XML data written to output file at '{0}'", OutputPath);
+        retval = true;
+      }
+      else
+      {
+        error_message = String::Format("Unable to save XML data to output file at '{0}'", OutputPath);
+      }
+      lf.Close();
+    }
+    else
+    {
+      error_message = String::Format("Unable to open XML output file at '{0}'", OutputPath);
+    }
+    return retval;
+  }
+}
+
+/*
+===========================================================================================================
+*/
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      if (c.HasTagsList())
+      {
+        /*
+         * Iterate tagged entries and records (artifacts).
+         *
+         * Iterating items in the current view is much faster,
+         * so it's sensible to provide this option if appropriate.
+         */
+
+        ItemIteratorClass iter(c, NOPROXY | PROMPT, TAGGED);
+
+        /*
+         * Building the iterator can take some time, so there may
+         * be a pause here.
+         */
+
+        if (iter.Name())
+        {
+          String path = "Demo.xml";
+          if (SystemClass::PathDialog(path, "Choose XML output path", "xml", "XML files\t*.xml", CREATE))
+          {
+            XmlHelperClass helper("TaggedItems", path);
+            while (ItemClass i = iter.GetNextItem())
+            {
+              Console.WriteLine("Adding '{0}' to XML.", i.Name());
+              if (helper.WriteItem(i))
+              {
+                Console.WriteLine("Successfully added '{0}' to XML.", i.Name());
+              }
+            }
+            String error_message;
+            if (helper.SaveFile(error_message))
+            {
+              Console.WriteLine(error_message);
+              SystemClass::OpenFile(path);
+            }
+            else
+            {
+              Console.WriteLine(error_message);
+            }
+          }
+        }
+        else
+        {
+          Console.WriteLine("No tag(s) selected.");
+        }
+      }
+      else
+      {
+        Console.WriteLine("Case has no tags.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("No case.");
+    }
+  }
+}
