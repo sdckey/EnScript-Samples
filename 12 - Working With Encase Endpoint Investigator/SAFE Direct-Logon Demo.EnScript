@@ -32,7 +32,7 @@ class MainClass
       if (safe.ReadSafeKey(safeKey)) {
         LocalFileClass userKey();
         if (userKey.Open("C:\\Users\\simon.key\\Documents\\EnCase\\Keys\\Simon Key.PrivateKey")) {
-          if (safe.ReadUserKey("Simon Key", userKey, "")) {
+          if (safe.ReadUserKey("Simon Key", userKey, "<password goes here>")) {
             if (safe.LogonDirect(logon)) {
               Console.WriteLine("Address:        {0}", logon.Address());
               Console.WriteLine("Inbound Port:   {0}", logon.InboundPort());
