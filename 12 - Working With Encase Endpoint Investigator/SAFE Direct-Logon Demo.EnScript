@@ -1,0 +1,173 @@
+/*
+ *  This script demonstrates how to logon to an Endpoint Investigator
+ *  SAFE directly, i.e., without providing credentials through a GUI.
+ *  The resultant connection is used to perform a minimal snapshot,
+ *  the results of which are shown in a dialog box.
+ *
+ *  Such a script could be compiled into an encrypted EnPack file
+ *  thereby allowing a non-privileged user to run a snapshot without
+ *  knowing the account password needed for the connection.
+ *
+ *  Tested under EnCase 21.1.0.68.
+ *
+ *  Report bugs to -
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Snr. Curriculum Developer - Learning Services (EnCase)
+ *  OpenText Security (Reading Office, UK)"
+ *
+ *  14th May 2021
+ */
+
+class MainClass
+{
+  void Main()
+  {
+    SystemClass::ClearConsole();
+    SafeClass safe();
+    SafeClass::LogonClass logon();
+    logon.SetAddress("SLOHVHOST_2");
+    LocalFileClass safeKey();
+    if (safeKey.Open("C:\\Users\\simon.key\\Documents\\EnCase\\Keys\\IR Course.SAFE")) {
+      if (safe.ReadSafeKey(safeKey)) {
+        LocalFileClass userKey();
+        if (userKey.Open("C:\\Users\\simon.key\\Documents\\EnCase\\Keys\\Simon Key.PrivateKey")) {
+          if (safe.ReadUserKey("Simon Key", userKey, "")) {
+            if (safe.LogonDirect(logon)) {
+              Console.WriteLine("Address:        {0}", logon.Address());
+              Console.WriteLine("Inbound Port:   {0}", logon.InboundPort());
+              Console.WriteLine("Window Size:    {0}", logon.WindowSize());
+              Console.WriteLine("SAFE Is Remote: {0}", logon.IsRemoteSAFE() ? "Yes" : "No");
+              Console.WriteLine("Is Nagle:       {0}", logon.IsNagle() ? "Yes" : "No");
+              Console.WriteLine("Client Address: {0}", logon.ClientAddress() ? logon.ClientAddress() : "<none>");
+              Console.WriteLine("Mode:           {0}", SafeClass::LogonClass::Modes::SourceText(logon.Mode()));
+              Console.WriteLine("Priority:       {0}", SafeClass::LogonClass::Priorities::SourceText(logon.Priority()));
+              if (RoleClass role_root = safe.RoleRoot())
+              {
+                if (RoleClass target_role = role_root.Find("Instructor")) // Find the desired role here. One could als0 use NodeClass::FirstChild(),
+                {                                                         // NodeClass::GetChild(), NodeClass::LastChild(), etc.
+                  Console.WriteLine("Got '{0}' role with ID {1}.", target_role.Name(), target_role.Id());
+                  NetworkClass safe_net();
+                  if (safe.GetNetwork(target_role, safe_net))
+                  {
+                    Console.WriteLine("SAFE network for the '{0}' role is as follows:", target_role.Name());
+                    RecurseNetwork(safe_net);
+                    NetworkClass target_net();
+                    new NetworkClass(target_net, "WKS26A18.GST.LOCAL", SELECTED); // A machine won't be included
+                                                                                  // in the batch unless it's
+                                                                                  // been selected in the
+                                                                                  // network tree.
+
+                   /*
+                    * The role is set on the next line, i.e., when the batch is constructed.
+                    *
+                    * No ConnectionClass::SnapOptions value is being used so as to speed
+                    * the process.
+                    */
+
+                    BatchClass batch(safe, target_role, safe.SweepLimit(), 0);
+                    if (batch.Add(target_net))
+                    {
+                      Console.WriteLine("Target network added to batch.");
+                      if (batch.Start())
+                      {
+                        Console.WriteLine("Batch started with {0}-machine(s).", batch.TotalMachines());
+                        BatchClass::ConnectionTypes reply;
+                        ConnectionClass conn;
+                        SnapshotClass root(),
+                                      s;
+                        String message,
+                               name;
+                        do
+                        {
+                          message.Close();
+                          name.Close();
+                          s = new SnapshotClass();
+                          reply = batch.GetConnection(conn, s, name, message, 0);
+                          if (reply == BatchClass::BATCHCONNECT)
+                          {
+                            Console.WriteLine("Got connection to '{0}'.", name);
+                            root.Insert(s);
+                          }
+                          else if (reply == BatchClass::BATCHERROR)
+                          {
+                            Console.WriteLine("Could not connect to '{0}'. SAFE error message is {1}.", name, message);
+                            root.Insert(s);
+                          }
+                          else if (reply == BatchClass::BATCHWAIT)
+                          {
+                            SystemClass::Sleep(100);
+                          }
+                          else if (reply == BatchClass::BATCHFATAL)
+                          {
+                            String err = SystemClass::LastError();
+                            Console.WriteLine("The SAFE is not responding: {0}. Script will terminate.", err);
+                            SystemClass::Exit();
+                          }
+                        }
+                        while (reply != BatchClass::BATCHDONE);
+                        Console.WriteLine("Batch completed.");
+                        ResultDialogClass dialog(root);
+                        dialog.Execute();
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void RecurseNetwork(NetworkClass folder, int tab_index = 1)
+  {
+    foreach(NetworkClass child in folder)
+    {
+      for (uint i; i < tab_index; i++)
+      {
+        Console.Write("\t");
+      }
+      if (String ips = GetIPsAsString(child))
+      {
+        Console.WriteLine("{0} ({1})", child.Name(), ips);
+      }
+      else
+      {
+        Console.WriteLine(child.Name());
+      }
+      if (child.IsFolder())
+      {
+        RecurseNetwork(child, tab_index + 1);
+      }
+    }
+  }
+
+  String GetIPsAsString(NetworkClass net)
+  {
+    String retval;
+    if (net.Start())
+    {
+      retval = net.Start();
+      if (net.Stop())
+      {
+        retval = String::Format("{0} - {1}", retval, net.Stop());
+      }
+    }
+    return retval;
+  }
+}
+
+class ResultDialogClass : DialogClass
+{
+  TreeTableEditClass                                                    _root;
+
+  ResultDialogClass(SnapshotClass root):
+   super(null, "SAFE Direct-Logon Demo"),
+   _root(this, "Snapshot results", START, NEXT, 600, 100, 0, root, 0)
+  {
+    SetViewOptions(VIEWMAX | VIEWMIN | VIEWCANCEL | VIEWSIZE);
+  }
+}
+
