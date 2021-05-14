@@ -1,6 +1,7 @@
 /*
  *  This script demonstrates how to logon to an Endpoint Investigator
  *  SAFE directly, i.e., without providing credentials through a GUI.
+ *
  *  The resultant connection is used to perform a minimal snapshot,
  *  the results of which are shown in a dialog box.
  *
