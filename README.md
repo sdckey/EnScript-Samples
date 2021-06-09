@@ -1,5 +1,5 @@
 # EnScript-Samples
-This repository is a collection of EnScript code samples for use in the [Guidance Software Inc.](http://www.guidancesoftware.com) EnCase application. It is very much a work in progress.
+This repository is a collection of EnScript code samples for use in the [OpenText](https://www.opentext.com/products-and-solutions/products/security) EnCase application. It is very much a work in progress.
 
 **Please note that you use the code in this repository at your own risk. No warranty regarding its use is given or implied, and I cannot provide any support for it.**
 
@@ -7,13 +7,13 @@ EnScript is a proprietary scripting language with roots in C++. It also has elem
 
 EnScripts can include other EnScript library files, resource files and .NET assemblies. They can be packaged into files with an 'EnPack' file-extension.
 
-Each script in this repository has been tested/developed using EnCase 7/8 unless specified otherwise.
+Each script in this repository has been tested/developed using the current version of EnCase unless specified otherwise.
 
 If you'd like to see an example of how to accomplish a particular thing please feel free to raise an issue and I will look at it as soon as I'm able.
 
 A substantial number of production EnScripts are available on EnCase App Central -
 
-* https://www.guidancesoftware.com/app
+* https://security.opentext.com/app
 
 ## FAQ
 __Q) Why are many EnScripts in *.EnPack format? Is it to hide the code?__
@@ -28,7 +28,7 @@ __Q) Can I write EnScripts without EnCase?__
 
 A) Yes, but you won't be able to compile or run them. One option is to apply to become an EnCase App Central Developer. If you're accepted, you will receive an EnCase licence that can be used for EnScript development. For more details click the following link -
 
-* http://tiny.cc/ppsmly
+* https://security.opentext.com/app/become-a-developer
 
 __Q) Is there any documentation available for EnScript?__
 
@@ -40,7 +40,7 @@ __Q) Is there any training available for EnScript?__
 
 A) Yes - 
 
-* http://tiny.cc/91w4ky
+* https://www.opentext.com/TrainingRegistry/course/details/2626
 
 __Q) Can I ask for a script example showing how to accomplish a particular task?__
 
