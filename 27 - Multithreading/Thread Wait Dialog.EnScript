@@ -1,0 +1,119 @@
+//========================================================================
+// This is a generic dialog that will work with any thread
+//========================================================================
+
+class ThreadWaitDialogClass: DialogClass {
+  ThreadClass       Thread;
+  StatusWindowClass Status;
+  int               Position;
+  String            Message;
+
+  ThreadWaitDialogClass(WindowClass parent, ThreadClass thread):
+    super(parent, Lang::T5557),
+    Status(this, Lang::T1259, START, NEXT, 250, 12, 0),
+    Thread = thread
+  {
+    SetViewOptions(VIEWCANCEL);
+    CancelButton.SetName(Lang::T0054);
+  }
+
+  virtual void Setup() {
+    super::Setup();
+    SetTimer(500);
+    Thread.Start();
+    Status.SetLimit(Lang::T1259, 100);
+  }
+
+  virtual void TimerEvent(uint id) {
+    super::TimerEvent(id);
+
+    if (Thread) {
+      if (Thread.IsRunning()) {
+        String message = MyThreadClass::TypeCast(Thread).GetStatusMessage();
+        if (message != Message) {
+          Message = message;
+          Status.SetCaption(message);
+        }
+
+        double range = MyThreadClass::TypeCast(Thread).GetStatusRange();
+        if (range > 0.0) {
+          int pos = double::Trunc(MyThreadClass::TypeCast(Thread).GetStatusPos() / range * 100.0);
+          if (pos != Position) {
+            Position = pos;
+            Status.SetPosition(pos);
+          }
+        }
+      }
+
+      if (Thread.Wait(0)) {
+        // Do not close the dialog until thread is completely finished
+        delete Thread;
+        Destroy(SystemClass::CANCEL);
+      }
+    }
+  }
+
+  virtual void ChildEvent(const EventClass &event) {
+    if (event.Id == SystemClass::CANCEL && Thread) {
+      // If user clicks cancel, change text and tell thread to stop running as soon as possible
+      // Keep the dialog box open. It will close in the TimerEvent when the thread signals complete
+      Status.SetLimit(Lang::T2174, 100);
+      Position = 0;
+      Thread.StopRunning();
+    }
+    else
+      super::ChildEvent(event);
+  }
+
+  // This static function is used to start the thread under the direction of the dialog box
+  static void RunThread(WindowClass parent, ThreadClass thread) {
+    ThreadWaitDialogClass d(parent, thread);
+    d.Execute();
+  }
+}
+//========================================================================
+// This is an example thread
+//========================================================================
+
+class MyThreadClass: ThreadClass {
+  static const int MAX = 10;
+
+  MyThreadClass():
+    super(null, "Write to console")
+  {
+  }
+
+  virtual ~MyThreadClass() {
+    Console.WriteLine("Deleted");
+  }
+
+  virtual void Run() {
+    // This thread writes dots to the console for MAX seconds, then exits
+    Console.Write("Starting...");
+
+    SetStatusRange(MAX);
+    for (int i; i < MAX; ++i) {
+      if (IsRunning()) {
+        SetStatusPos(i);
+        SetStatusMessage("Completed stage " + i);
+        Console.Write(".");
+        SystemClass::Sleep(1000);
+      }
+      else {
+        Console.Write("Cancelled...");
+        break;
+      }
+    }
+    Console.Write("Done...");
+  }
+
+}
+//========================================================================
+
+class MainClass: ApplicationClass {
+  void Main() {
+    SystemClass::ClearConsole(1);
+    ThreadWaitDialogClass::RunThread(null, new MyThreadClass());
+  }
+}
+//========================================================================
