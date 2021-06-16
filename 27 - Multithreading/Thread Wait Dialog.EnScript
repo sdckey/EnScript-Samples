@@ -59,6 +59,7 @@ class ThreadWaitDialogClass: DialogClass {
       // Keep the dialog box open. It will close in the TimerEvent when the thread signals complete
       Status.SetLimit(Lang::T2174, 100);
       Position = 0;
+      CancelButton.Enable(false);
       Thread.StopRunning();
     }
     else
