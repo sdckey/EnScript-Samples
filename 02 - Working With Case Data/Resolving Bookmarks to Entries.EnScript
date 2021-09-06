@@ -1,0 +1,70 @@
+/*
+ *  This script identifies the entries bookmarked into a folder called
+ *  'Target' and writes their permissions to the Console window in a
+ *  tab-delimited format that can be copied and pasted into an Excel
+ *  spreadsheet.
+ *
+ *  Bookmarks are resolved back to the original-item using an
+ *  instance of ItemCacheClass. The original item is then typecast
+ *  to an entry so that its permissions can be enumerated. (Records
+ *  don't have permissions).
+ *
+ *  Tested under EnCase 21.02.00.155.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer
+ *  OpenText UK (Reading)
+ *
+ *  6th September 2021
+ */
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (BookmarkClass target_folder = c.BookmarkRoot().Find("Target"))
+    {
+      if (target_folder.Count())
+      {
+        Console.WriteLine("Path\tName\tId\tProperty\tPermissions\n");
+        ItemCacheClass cache(c);
+        forall (BookmarkClass child in target_folder)
+        {
+          if (ItemClass source_item = cache.GetMountedItem(child))
+          {
+            if (EntryClass e = EntryClass::TypeCast(source_item))
+            {
+              if (e.PermissionRoot().Count())
+              {
+                bool got_first;
+                foreach (PermissionClass p in e.PermissionRoot())
+                {
+                  if (!got_first)
+                  {
+                    Console.Write("{0}\t{1}\t", source_item.ItemPath(), p.Name());
+                    got_first = true;
+                  }
+                  else
+                  {
+                    Console.Write("\t{0}\t", p.Name());
+                  }
+                  Console.Write("{0}\t", p.Id());
+                  Console.Write("{0}\t", p.Property());
+                  Console.Write("{0}\n", p.Permissions());
+                }
+                Console.WriteLine();
+              }
+              else
+              {
+                Console.WriteLine("No permissions");
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
