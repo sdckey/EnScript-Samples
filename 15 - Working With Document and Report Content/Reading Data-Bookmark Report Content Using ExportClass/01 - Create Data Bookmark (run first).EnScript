@@ -1,0 +1,43 @@
+/*
+ *  BookmarkDataClass example From EnScript help file as of
+ *  7th September 2021.
+ */
+
+
+class PersonClass: NameListClass {
+  property int    IDNum,
+                  Age;
+  property String FName;
+
+  PersonClass(PersonClass parent, const String &name = "", const String &fname = "", int id = 0, int age = 1):
+    NameListClass(parent, name),
+    IDNum = id,
+    Age = age,
+    FName = fname
+  {
+  }
+}
+
+class MainClass {
+  void Main(CaseClass c) {
+    if (c) {
+      SystemClass::ClearConsole(SystemClass::SHOWCONSOLE);
+
+      PersonClass pRoot(null);
+      PersonClass rob(pRoot, "Person1", "Rob", 1, 21);
+      PersonClass nancy(pRoot, "Person2", "Nancy", 2, 42);
+      PersonClass jeremy(pRoot, "Person3", "Jeremy", 3, 16);
+      HandlerClass hand(null, "Handler", 0, typeof(PersonClass));
+      new HandlerClass::NameFieldClass(hand, "ID Field", 0, PersonClass::property(IDNum), "_ID");
+      new HandlerClass::StringFieldClass(hand, "Name Field", 0, PersonClass::property(FName), "_Name");
+      new HandlerClass::IntFieldClass(hand, "Age Field", 0, PersonClass::property(Age), "_Age");
+
+      BookmarkClass folder(c.BookmarkRoot(), "BookmarkDataClass Demo Folder", NodeClass::FOLDER);
+
+      BookmarkDataClass mark(folder, "BookmarkData");
+      mark.SetComment("Comment for new BookmarkDataClass");
+      if (mark.SetRoot(pRoot, hand))
+        Console.WriteLine("Root Node set successfully for BookmarkDataClass");
+    }
+  }
+}

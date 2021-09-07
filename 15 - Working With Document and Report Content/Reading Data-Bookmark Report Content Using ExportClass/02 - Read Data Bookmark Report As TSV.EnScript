@@ -1,0 +1,66 @@
+/*
+ *  This script demonstrates the use of ExportClass to read the
+ *  the report-data of selected data-bookmarks.
+ *
+ *  An example of this type of bookmark can be created by running
+ *  the 'Create Data Bookmark (run first)' script, which contains
+ *  the sample BookmarkDataClass code taken from the EnScript help file.
+ *
+ *  The report is written as text into a MemoryFileClass object before
+ *  being copied to the console.
+ *
+ *  This methodology can only be used for bookmarks that already
+ *  exist in the current case.
+ *
+ *  It is a kludge to circumvent the fact that the data in a data-
+ *  bookmark cannot be accessed programmatically.
+ *
+ *  It should be noted that where a report-table contains a
+ *  significant number of columns, EnCase will sub-divide it, so
+ *  as to better fit on a page when printed.
+ *
+ *  Tested under EnCase 21.02.00.155.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer
+ *  Learning Services (EnCase)
+ *  OpenText UK (Reading Office)
+ *
+ *  7th September 2021
+ */
+
+class MainClass
+{
+
+  static const String                                       BookmarkFolderName = "BookmarkDataClass Demo Folder",
+                                                            BookmarkName       = "BookmarkData";
+
+  void Main(CaseClass c)
+  {
+    if (c)
+    {
+      SystemClass::ClearConsole(SHOWCONSOLE);
+      forall (BookmarkClass b in c.BookmarkRoot())
+      {
+        if (b.IsSelected() && BookmarkDataClass d = BookmarkDataClass::TypeCast(b))
+        {
+          MemoryFileClass t();
+          if (t.Open(512, WRITE))
+          {
+            ExportClass ex();
+            if (ex.Open(t, TEXT))
+            {
+              ex.SingleReport(b);
+              t.Seek(0);
+              String text;
+              t.ReadString(text);
+              Console.Write(text);
+            }
+          }
+        }
+      }
+    }
+  }
+}
