@@ -1,0 +1,52 @@
+
+/*
+ *  The following assembly and its dependent DLLs must be
+ *  in the same folder as the script.
+ */
+
+assembly "MailSender.dll"
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+
+    String from_name  = "Simon Key (Personal)",
+           from_email = "simon@anonymous.com",
+           to_name    = "Simon Key (Work)",
+           to_email   = "skey@opentext.com",
+           subject    = "Test Message From EnScript",
+           text       = "Hi Simon,\n\nHow are you today?\n\nBest,\n\nSimon",
+           host       = "smtp.gmail.com",
+           user       = "simon@anonymous.com",
+           password   = "aaabbbcccddd", // For Gmail, this must be an app password
+           error_message;
+     int   port = 465;
+     bool use_ssl = true,
+          use_authentication = true;
+
+    if (MailSender::MailSenderClass::SendMessage(from_name,
+                                                 from_email,
+                                                 to_name,
+                                                 to_email,
+                                                 subject,
+                                                 text,
+                                                 host,
+                                                 port,
+                                                 use_ssl,
+                                                 use_authentication,
+                                                 user,
+                                                 password,
+                                                 error_message))
+
+    {
+      SystemClass::Message(ICONINFORMATION, "Success", "Message sent!");
+    }
+    else
+    {
+      SystemClass::Message(ICONINFORMATION, "Failure", "Message not sent!\n\nSee console for error.");
+      Console.WriteLine(error_message);
+    }
+  }
+}
