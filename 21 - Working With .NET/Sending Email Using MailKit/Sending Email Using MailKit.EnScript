@@ -1,7 +1,21 @@
 
 /*
- *  The following assembly and its dependent DLLs must be
+ *  Script demonstrating the transmission of email messages
+ *  using the .NET MailKit library.
+ *
+ *  The MailSender.dll assembly and its dependent DLLs must be
  *  in the same folder as the script.
+ *
+ *  Developed using EnCase 21.3.1.4.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer
+ *  Learning Services (EnCase)
+ *  OpenText UK (Reading)
+ *
+ *  15th September 2021
  */
 
 assembly "MailSender.dll"
