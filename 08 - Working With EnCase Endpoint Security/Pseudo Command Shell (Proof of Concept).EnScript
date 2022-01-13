@@ -1,0 +1,370 @@
+/*
+ *  This is a proof of concept script that provides a pseudo command-line interface via the
+ *  EnCase Endpoint Investigator SAFE agent. It requires remediation and appropriate examiner
+ *  permissions in order to function.
+ *
+ *  In essence, the script instructs the agent to launch a command and return the output.
+ *
+ *  The script waits for each command to finish, which will cause it to hang if the command
+ *  is interactive (requests input). This is one limitation.
+ *
+ *  Another limitation is that the script will hang if the command produces a significant
+ *  amount of output.
+ *
+ *  In order to overcome the latter, the script can be instructed to construct the command-
+ *  line so that it redirects the standard output stream (stdout) to a network path accessible
+ *  to both the examiner and the agent.
+ *
+ *  On Windows machines, the agent runs in the context of the system account, so in a domain
+ *  environment, the network path must be writable by the target machine's domain account.
+ *
+ *  Each command is written to the output window, which together with the option to
+ *  timestamp each output file, provides a useful logging mechanism.
+ *
+ *  The script also provides the option to invoke commands via cmd.exe and the /c command-line
+ *  switch. This is necessary in order to run internal commands, e.g., date, time, ver, etc. It
+ *  is also necessary/easier when running some external commands, e.g., those from the
+ *  PSTools suite. (The latter should be used with the /accepteula command-line switch to
+ *  suppress the licence agreement, which would otherwise cause the script to hang.)
+ *
+ *  One particularly useful command that should be run via cmd.exe is wmic, which can provide
+ *  a substantial amount of information about the target machine. For example, one can run
+ *  "wmic volume" to list volume information. (Run wmic /? at the command line for more
+ *  information.)
+ *
+ *  It's worthy of note that the examiner may also launch command-line executables located on
+ *  a network share. This is useful when an executable isn't installed on the target. The same
+ *  caveat applies to the permissions needed by the remote system account to access that share.
+ *
+ *  NOTE: Improper use of this script can cripple the target machine. USE AT YOUR OWN RISK.
+ *
+ *  Tested using EnCase 21.4.0.109.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer (EnCase Training)
+ *  OpenText (UK)
+ *
+ *  13th January 2022
+ */
+
+class MainClass
+{
+  String                                  Target,
+                                          Role_Name,
+                                          Application,
+                                          CommandLine,
+                                          Folder,
+                                          Output,
+                                          OutputPath,
+                                          RolePath;
+
+  bool                                    UseCmdExe,
+                                          RedirectOutput,
+                                          OpenOutput,
+                                          AppendTimestamp;
+
+  SafeClass                               Safe;
+
+  NetworkClass                            Net;
+
+  RoleClass                               Role;
+
+  BatchClass                              Batch;
+
+  ConnectionClass                         Conn;
+
+  MainClass() :
+    Application(),
+    CommandLine("systeminfo"),
+    Safe(),
+    Net(),
+    Conn(),
+    Role(),
+    UseCmdExe = true,
+    AppendTimestamp = true,
+    OpenOutput = true
+  {
+
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass s("Pseudo Command Shell (Proof of Concept)", options);
+    s.Value("Target", Target);
+    s.Value("Application", Application);
+    s.Value("CommandLine", CommandLine);
+    s.Value("Folder", Folder);
+    s.Value("OutputPath", OutputPath);
+    s.Value("UseCmdExe", UseCmdExe);
+    s.Value("RedirectOutput", RedirectOutput);
+    s.Value("OpenOutput", OpenOutput);
+    s.Value("RolePath", RolePath);
+    s.Value("AppendTimestamp", AppendTimestamp);
+  }
+
+  bool GetRole()
+  {
+    RoleTargetDialogClass dialog(null, "Choose role and target", this);
+    return dialog.Execute() == SystemClass::OK;
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    if (Safe.Logon())
+    {
+      Console.WriteLine("Got logon.");
+      if (Safe.RemediationAllowed())
+      {
+        Console.WriteLine("Got remediation.");
+        AccessStorage();
+        if (GetRole())
+        {
+          RolePath = Role.FullPath();
+          AccessStorage(StorageClass::WRITE);
+          Console.WriteLine("Got {0} role.", Role.Name());
+          new NetworkClass(Net, Target, SELECTED);
+          Batch = new BatchClass(Safe, Role, -1, 0);
+          if (Batch.Add(Net))
+          {
+            Console.WriteLine("Network added to batch.");
+            if (Batch.Start())
+            {
+              String message,
+                     name;
+              do
+              {
+                SnapshotClass ss(null);
+                message = "";
+                BatchClass::ConnectionTypes reply = Batch.GetConnection(Conn, ss, name, message, 0);
+                if (reply == BatchClass::BATCHCONNECT)
+                {
+                  Console.WriteLine("Got connection to {0}.", Target);
+                  CommandDialogClass dialog(null, String::Format("Remote Command Execution - {0}", Target), this);
+                  dialog.Execute();
+                }
+                else if (reply == BatchClass::BATCHERROR)
+                {
+                  message.Trim("\r\n", TRIMSTART | TRIMEND);
+                  Console.WriteLine("Could Not Connect To {0}. SAFE Error Message is '{1}'.", name, message);
+                }
+                else if (reply == BatchClass::BATCHWAIT)
+                {
+                  SystemClass::Sleep(100);
+                }
+                else if (reply == BatchClass::BATCHFATAL)
+                {
+                  String err = SystemClass::LastError();
+                  Console.WriteLine("The SAFE is not responding: {0}. This Enscript will terminate.", err);
+                  break;
+                }
+              }
+              while (reply != BatchClass::BATCHDONE);
+            }
+          }
+        }
+      }
+      else
+      {
+        SystemClass::Message(ICONSTOP, "Error", "This script requires remediation.");
+      }
+    }
+  }
+}
+
+class RoleTargetDialogClass : DialogClass
+{
+  MainClass                              M;
+
+  TreeEditClass                          _Role;
+
+  StringEditClass                        _Target;
+
+  RoleTargetDialogClass(WindowClass parent, const String &title, MainClass m) :
+    super(parent, title),
+    M = m,
+    _Role(this, "Role", START, START, 300, 100, 0, M.Safe.RoleRoot(), 0),
+    _Target(this, "Target (IP-address or host-name)", START, NEXT, 300, DEFAULT, 0, M.Target, -1, REQUIRED)
+  {
+
+  }
+
+  virtual void CheckControls()
+  {
+    super::CheckControls();
+    OKButton.Enable(_Role.GetValue() != _Role.GetDataRoot());
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = super::CanClose();
+    if (retval)
+    {
+      M.Role = RoleClass::TypeCast(_Role.GetValue());
+    }
+    return retval;
+  }
+
+}
+
+class CommandDialogClass : DialogClass
+{
+  MainClass                              M;
+
+  StringEditClass                        _Application;
+
+  CheckBoxClass                          _UseCmdExe;
+
+  StringEditClass                        _Folder,
+                                         _CommandLine;
+
+  CheckBoxClass                          _RedirectOutput,
+                                         _AppendTimestamp,
+                                         _OpenOutput;
+
+  PathEditClass                          _OutputPath;
+
+  ButtonClass                            _Run;
+
+  StringEditClass                        _Output;
+
+  CommandDialogClass(WindowClass parent, const String &title, MainClass m) :
+    super(parent, title),
+    M = m,
+    _Application(this, "Executable", START, START, 400, DEFAULT, 0, M.Application, -1, REQUIRED),
+    _UseCmdExe(this, "Use cmd.exe /c", NEXT, 15, DEFAULT, DEFAULT, 0, M.UseCmdExe),
+    _Folder(this, "Folder", START, NEXT, 400, DEFAULT, 0, M.Folder, -1, 0),
+    _CommandLine(this, "Command-Line", START, NEXT, 400, DEFAULT, 0, M.CommandLine, -1, 0),
+    _RedirectOutput(this, "Redirect output to file", START, NEXT, DEFAULT, DEFAULT, 0, M.RedirectOutput),
+    _AppendTimestamp(this, "Prepend timestamp to extension of output file", NEXT, SAME, DEFAULT, DEFAULT, 0, M.AppendTimestamp),
+    _OpenOutput(this, "Open output file", NEXT, SAME, DEFAULT, DEFAULT, 0, M.OpenOutput),
+    _OutputPath(this, "Output file path (must be a UNC path writable by agent and readable by examiner)", 10, NEXT, 400, DEFAULT, 0, M.OutputPath, REQUIRED | FILECREATE),
+    _Run(this, "Run", START, NEXT, DEFAULT, DEFAULT, 0),
+    _Output(this, "Output", START, NEXT, 600, 150, 0, M.Output, -1, 0)
+
+  {
+    SetViewOptions(VIEWCANCEL);
+  }
+
+  virtual void CheckControls()
+  {
+    _Application.Enable(!_UseCmdExe.GetValue());
+    _OutputPath.Enable(_RedirectOutput.GetValue());
+    _AppendTimestamp.Enable(_RedirectOutput.GetValue());
+    _OpenOutput.Enable(_RedirectOutput.GetValue());
+    super::CheckControls();
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = super::CanClose();
+    return retval;
+  }
+
+  String GetFilePathWithTimestamp(const String &path)
+  {
+    String retval;
+    DateClass date();
+    date.Now();
+    String timestamp = date.ISOString();
+    timestamp.Trim("- :", TRIMALL);
+    retval = path;
+    retval.ReplaceExtension(String::Format("{0}.{1}", timestamp, path.GetFileExt()));
+    return retval;
+  }
+
+  bool CanRun()
+  {
+    bool retval;
+    if (!_RedirectOutput.GetValue() ||  (_OutputPath.GetText().Find("\\\\") == 0))
+    {
+      if (!_RedirectOutput.GetValue() ||  (_OutputPath.GetText().Find("\\\\127.0.0.1\\") == -1))
+      {
+        if (!_RedirectOutput.GetValue() ||  (_OutputPath.GetText().Find("\\\\localhost\\") == -1))
+        {
+          if (_UseCmdExe.GetValue() && !_CommandLine.GetText())
+          {
+            ErrorMessage("Command line must be specified when using cmd.exe /c.");
+            retval = false;
+          }
+          else
+          {
+            retval = true;
+          }
+        }
+        else
+        {
+          ErrorMessage("Use of localhost could write data to the target machine and is therefore prohibited");
+          retval = false;
+        }
+      }
+      else
+      {
+        ErrorMessage("Use of 127.0.0.1 could write data to the target machine and is therefore prohibited");
+        retval = false;
+      }
+    }
+    else
+    {
+      ErrorMessage("A UNC output path must be specified.");
+      retval = false;
+    }
+    return retval;
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    super::ChildEvent(event);
+    if (_Run.Matches(event))
+    {
+      if (CanRun())
+      {
+        ExecuteClass exec();
+        String command_line;
+        if (!_UseCmdExe.GetValue())
+        {
+          exec.SetApplication(_Application.GetText());
+          command_line = _CommandLine.GetText();
+        }
+        else
+        {
+          exec.SetApplication("cmd.exe");
+          command_line = String::Format("/c {0}", _CommandLine.GetText());
+        }
+        if (!_RedirectOutput.GetValue() || _OutputPath.GetText())
+        {
+          String output_path;
+          if (_RedirectOutput.GetValue())
+          {
+            output_path = _OutputPath.GetText();
+            if (_AppendTimestamp.GetValue())
+            {
+              output_path = GetFilePathWithTimestamp(output_path);
+            }
+            command_line = String::Format("{0} > \"{1}\"", command_line, output_path);
+          }
+          exec.SetCommandLine(command_line);
+          exec.SetFolder(_Folder.GetText());
+          Output();
+          M.AccessStorage(StorageClass::WRITE);
+          if (exec.Start(M.Conn, -1))
+          {
+            String cmd = String::Format("{0} {1}", exec.Application(), exec.CommandLine());
+            _Output.SetText(String::Format("{0}\n>{1}\n{2}", _Output.GetText(), cmd, exec.Output()));
+            _Output.ShowLastLine();
+            if (_RedirectOutput.GetValue() && _OpenOutput.GetValue())
+            {
+              SystemClass::OpenFile(output_path);
+            }
+          }
+        }
+        else
+        {
+          ErrorMessage("File path is required for redirected output.");
+        }
+      }
+    }
+  }
+
+}
