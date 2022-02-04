@@ -1,0 +1,62 @@
+/*
+ *  Parses the following UNIX timestamp from Windows SOFTWARE Registry hive files:
+ *
+ *  - Microsoft\Windows NT\CurrentVersion\InstallDate
+ *
+ *  Output is via the console and bookmarks.
+ *
+ *  Tested/developed using EnCase 21.4.0.109.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *
+ *  4th February 2022
+ *
+ */
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      BookmarkClass folder(c.BookmarkRoot(), "Results", NodeClass::FOLDER);
+      ItemIteratorClass iter(c, NORECURSE | NOPROXY);
+      while (EntryClass e = iter.GetNextEntry())
+      {
+        if (e.Name().Compare("SOFTWARE") == 0)
+        {
+          Console.WriteLine("Processing '{0}'", e.ItemPath());
+          RegistryClass reg(e);
+          RegCommandClass cmds();
+          String target_name = "Install Date",
+                 reg_key     = "Microsoft\\Windows NT\\CurrentVersion",
+                 reg_value   = "InstallDate";
+          new RegCommandClass(cmds,
+                              target_name,
+                              READVALUE, HKEY_ENTRY_HIVE,
+                              reg_key, reg_value,
+                              0,
+                              -1);
+          RegValueClass values();
+          if (reg.Run(cmds, values))
+          {
+            if ((RegValueClass target = values.Find(target_name)) && !target.Error())
+            {
+              String source_path = String::Format("{0}\\{1}\\{2}", e.TruePath(), reg_key, reg_value);
+              DateClass install_date();
+              install_date.SetUnix(target.Value());
+              String comment = String::Format("Value of '{0}' is {1} (UTC - {2}).", source_path, install_date.GetString(DateClass::GetDateFormat(), DateClass::GetTimeFormat(), 0), target.Value());
+              BookmarkClass bm_note(folder);
+              bm_note.CopyItemData(e);
+              bm_note.SetComment(comment);
+              Console.WriteLine(comment);
+            }
+          }
+        }
+      }
+    }
+  }
+}
