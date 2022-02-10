@@ -1,0 +1,45 @@
+typelib                       WSH                        "WScript.Shell"
+
+class MainClass
+{
+  enum                                                   DriveTypes
+                                                         {
+                                                           UNKNOWN("Unknown"),
+                                                           REMOVABLE("Removable"),
+                                                           FIXED("Fixed"),
+                                                           NETWORK("Network"),
+                                                           CDROM("CD-ROM"),
+                                                           RAMDISK("RAM-DISK")
+                                                         }
+  String GetDriveTypeAsString(int val)
+  {
+    String retval = "Unknown";
+    if (DriveTypes::IsValid(val))
+    {
+      retval = DriveTypes::DisplayText(val);
+    }
+    return retval;
+  }
+
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    WSH::FileSystemObject fso;
+    if (fso.Create())
+    {
+      DispatchClass::HaltOnException(false);
+      if (WSH::IDrive drive = fso.GetDrive("C:"))
+      {
+        Console.WriteLine("Total size: {0}", String::FormatInt(drive.TotalSize(), int::DECIMAL, COMMAS));
+        Console.WriteLine("Free space: {0}", String::FormatInt(drive.FreeSpace(), int::DECIMAL, COMMAS));
+        Console.WriteLine("Available space: {0}", String::FormatInt(drive.AvailableSpace(), int::DECIMAL, COMMAS));
+        Console.WriteLine("File system: {0}", drive.FileSystem());
+        Console.WriteLine("Drive type: {0}", GetDriveTypeAsString(drive.DriveType()));
+        Console.WriteLine("Volume name: {0}", drive.VolumeName());
+        Console.WriteLine("Serial number: {0}", String::FormatInt(drive.SerialNumber() & 0xffffffff, int::HEX, 0, 8));
+      }
+    }
+
+  }
+}
