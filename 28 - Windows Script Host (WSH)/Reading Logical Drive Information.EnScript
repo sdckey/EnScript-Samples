@@ -1,3 +1,18 @@
+/*
+ *  Script demonstrating use of Windows Script Host (WSH) to read
+ *  logical drive information.
+ *
+ *  Last tested/updated using EnCase 21.04.00.109.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer (EnCase Training)
+ *  OpenText Reading Office, UK
+ *
+ *  14th February 2022
+ */
+
 typelib                       WSH                        "WScript.Shell"
 
 class MainClass
@@ -25,21 +40,26 @@ class MainClass
   void Main(CaseClass c)
   {
     SystemClass::ClearConsole(1);
-    WSH::FileSystemObject fso;
-    if (fso.Create())
-    {
-      DispatchClass::HaltOnException(false);
-      if (WSH::IDrive drive = fso.GetDrive("C:"))
+    #ifdef WSH
+      WSH::FileSystemObject fso;
+      if (fso.Create())
       {
-        Console.WriteLine("Total size: {0}", String::FormatInt(drive.TotalSize(), int::DECIMAL, COMMAS));
-        Console.WriteLine("Free space: {0}", String::FormatInt(drive.FreeSpace(), int::DECIMAL, COMMAS));
-        Console.WriteLine("Available space: {0}", String::FormatInt(drive.AvailableSpace(), int::DECIMAL, COMMAS));
-        Console.WriteLine("File system: {0}", drive.FileSystem());
-        Console.WriteLine("Drive type: {0}", GetDriveTypeAsString(drive.DriveType()));
-        Console.WriteLine("Volume name: {0}", drive.VolumeName());
-        Console.WriteLine("Serial number: {0}", String::FormatInt(drive.SerialNumber() & 0xffffffff, int::HEX, 0, 8));
+        DispatchClass::HaltOnException(false); // Needed to prevent runtime errors if the logical drive does not exist
+
+        if (WSH::IDrive drive = fso.GetDrive("E"))
+        {
+          Console.WriteLine("Total size: {0}", String::FormatInt(drive.TotalSize(), int::DECIMAL, COMMAS));
+          Console.WriteLine("Free space: {0}", String::FormatInt(drive.FreeSpace(), int::DECIMAL, COMMAS));
+          Console.WriteLine("Available space: {0}", String::FormatInt(drive.AvailableSpace(), int::DECIMAL, COMMAS));
+          Console.WriteLine("File system: {0}", drive.FileSystem());
+          Console.WriteLine("Drive type: {0}", GetDriveTypeAsString(drive.DriveType()));
+          Console.WriteLine("Volume name: {0}", drive.VolumeName());
+          Console.WriteLine("Serial number: {0}", String::FormatInt(drive.SerialNumber() & 0xffffffff, int::HEX, 0, 8));
+        }
       }
-    }
+    #else
+      Console.WriteLine("Unable to interface with WScript.Shell.");
+    #endif
 
   }
 }
