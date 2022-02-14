@@ -60,6 +60,5 @@ class MainClass
     #else
       Console.WriteLine("Unable to interface with WScript.Shell.");
     #endif
-
   }
 }
