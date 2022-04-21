@@ -1,0 +1,250 @@
+/*
+ *  This script is a bare-bones example showing how to retrieve OneDrive data from
+ *  a Microsoft 365 user's account.
+ *
+ *  In order for this to work, the EnScript needs to know the tenant, client-ID and
+ *  client-secret, and the email address of the user in question.
+ *
+ *  For more details, please see the "Connecting to SharePoint Office 365 and OneDrive"
+ *  section of the EnCase help file.
+ *
+ *  Tested/developed using EnCase 21.4.0.109.
+ *
+ *  Report bugs to:
+ *
+ *  Simon Key <skey@opentext.com>
+ *  Sr. Principal Courseware Developer (EnCase Training)
+ *  OpenText Reading Office, UK
+ *
+ *  21st April 2022
+ *
+ */
+
+class MyProcessorClass : ProcessorClass
+{
+  LogicalEvidenceFileClass                                    LEF;
+
+  ProgramClass                                                Program;
+
+  bool                                                        UseCondition;
+
+  MyProcessorClass(LogicalEvidenceFileClass lef, ProgramClass program, bool use_condition) :
+    super(),
+    LEF = lef,
+    Program = program,
+    UseCondition = use_condition
+  {
+  }
+
+  virtual bool DocEvent(DocEventClass e, NodeClass node)
+  {
+    bool retval = true;
+    if (e && e.Store)
+    {
+      RecordClass record = RecordClass::TypeCast(node);
+      if (!record) {
+        Console.WriteLine("Invalid record at '{0}'.", e.Path());
+        retval = false;
+      }
+      else
+      {
+        if (e.Type() == DocEventClass::DOCUMENT)
+        {
+          if (!UseCondition || Program.Filter(record))
+          {
+            if (e.Store.GetDocument(record, e))
+            {
+              LogicalEvidenceFileClass::DataClass d();
+
+              d.Path     = e.Path();
+              d.DocEvent = e;
+
+              if (d.SetTarget(record, MODERECORD) && LEF.Add(d))
+              {
+                Console.WriteLine("Added '{0}' to LEF.", e.Path());
+              }
+              else
+              {
+                Console.WriteLine("Unable to add '{0}' to LEF.", e.Path());
+              }
+            }
+            else
+            {
+              Console.WriteLine("Unable to get document for '{0}'.", e.Path());
+            }
+          }
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("Invalid DocEvent or store.");
+    }
+    return retval;
+  }
+}
+
+class MainClass;
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                                   M;
+
+  StringEditClass                                             _Tenant,
+                                                              _ClientID;
+
+  PasswordEditClass                                           _ClientSecret;
+
+  StringEditClass                                             _TargetUser;
+
+  PathEditClass                                               _LEFPath;
+
+  CheckBoxClass                                               _UseCondition;
+
+  ButtonClass                                                 _SetCondition;
+
+
+  MyDialogClass(MainClass m) :
+    super(null, m.ScriptName),
+    M = m,
+    _Tenant(this, "Tenant (domain-name)", START, START, 300, DEFAULT, 0, M.Tenant, -1, REQUIRED),
+    _ClientID(this, "Client-ID (GUID)", START, NEXT, 300, DEFAULT, 0, M.ClientID, -1, REQUIRED),
+    _ClientSecret(this, "Client secret", START, NEXT, 300, DEFAULT, 0, M.ClientSecret, REQUIRED),
+    _TargetUser(this, "Target user (email address)", START, NEXT, 300, DEFAULT, 0, M.TargetUser, -1, REQUIRED),
+    _LEFPath(this, "LEF path", START, NEXT, 300, DEFAULT, 0, M.LEFPath, FILECREATE | REQUIRED),
+    _UseCondition(this, "Use condition", 128, NEXT, DEFAULT, DEFAULT, 0, M.UseCondition),
+    _SetCondition(this, "Set condition", 125, NEXT, DEFAULT, DEFAULT, 0)
+  {
+
+  }
+
+  virtual void CheckControls()
+  {
+    _SetCondition.Enable(_UseCondition.GetValue());
+    super::CheckControls();
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_SetCondition.Matches(event))
+    {
+      M.Condition.ShowEditDialog(event.Window());
+    }
+    super::ChildEvent(event);
+  }
+}
+
+class MainClass {
+
+  static String                                               SharePointGRAPHStoreGUID = "369f656e-c5fe-4f10-81f2-9f31440a82a0",
+                                                              ScriptName               = "Microsoft 365 OneDrive Acquisition Demo";
+
+
+  String                                                      Tenant,
+                                                              ClientID,
+                                                              ClientSecret,
+                                                              TargetUser,
+                                                              LEFPath;
+
+  bool                                                        UseCondition;
+
+  LogicalEvidenceFileClass                                    LEF;
+
+  ConditionClass                                              Condition;
+
+  ProgramClass                                                Program;
+
+  MainClass() :
+    LEFPath("Microsoft 365 OneDrive Data.Lx01"),
+    LEF(),
+    Condition(null, "Record Condition"),
+    Program()
+  {
+    Condition.SetClassName("RecordClass");
+    Condition.HideField(RecordClass::property(IsFolder));
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass s(ScriptName, options);
+    s.Value("Tenant", Tenant);
+    s.Value("ClientID", ClientID);
+    s.Value("TargetUser", TargetUser);
+    s.Value("LEFPath", LEFPath);
+    s.Value("Condition", Condition);
+    s.Value("UseCondition", UseCondition);
+  }
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    AccessStorage();
+    MyDialogClass dialog(this);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      AccessStorage(StorageClass::WRITE);
+
+      String code;
+
+      if (!UseCondition || (Condition.GetSourceCode(code) && Program.Compile(typeof(RecordClass), code) && Program.Constructor()))
+      {
+
+        StoreClass::ServerClass server();
+
+        server.OptionalProperties = new DataPropertyClass();
+        server.OptionalProperties.NewDataPropertyType("tenant", DataPropertyClass::STRING, Tenant);
+        server.OptionalProperties.NewDataPropertyType("clientId", DataPropertyClass::STRING, ClientID);
+        server.OptionalProperties.NewDataPropertyType("clientSecret", DataPropertyClass::STRING, ClientSecret);
+
+        StoreClass store = StoreClass::StoreFactoryClass::Create(SharePointGRAPHStoreGUID, "OneDriveGRAPH");
+
+        if (store.Open(server))
+        {
+          ProcessorClass::UserClass user_list();
+          if (store.GetUserList(user_list))
+          {
+            bool found_user;
+            foreach (ProcessorClass::UserClass user in user_list)
+            {
+              if (user.EmailAddress().Compare(TargetUser) == 0)
+              {
+                found_user = true;
+                if (LEF.Open(LEFPath, DELETEONCLOSEIFEMPTY | LEF2))
+                {
+                  StoreClass::QueryClass q();
+                  q.SetUserId(user.EmailAddress());
+                  MyProcessorClass p(LEF, Program, UseCondition);
+                  if (store.RunQuery(q, p))
+                  {
+                    Console.WriteLine("Done.");
+                  }
+                  else
+                  {
+                    Console.WriteLine("Errors encountered during processing:\n\n{0}", SystemClass::LastError());
+                  }
+                }
+                else
+                {
+                  Console.WriteLine("Unable to open LEF.");
+                }
+                break;
+              }
+            }
+            if (!found_user)
+            {
+              Console.WriteLine("Unable to find user.");
+            }
+          }
+          else
+          {
+            Console.WriteLine("Unable to get user list.");
+          }
+          store.Close();
+        }
+        else
+        {
+          Console.WriteLine("Unable to open store.");
+        }
+      }
+    }
+  }
+}
