@@ -79,6 +79,7 @@ class MyProcessorClass : ProcessorClass
     else
     {
       Console.WriteLine("Invalid DocEvent or store.");
+      retval = false;
     }
     return retval;
   }
