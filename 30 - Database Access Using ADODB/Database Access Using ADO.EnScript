@@ -1,0 +1,61 @@
+typelib DB "ADODB.Connection"
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+
+    DispatchClass::HaltOnException(false); // Needed so we can "catch" runtime errors.
+
+    DB::Connection db;
+
+    if (db.Create())
+    {
+      Console.WriteLine("Created ADO connection.\n");
+
+      /*
+       *  In the following statement, "MySQL ODBC 8.0 Unicode Driver" represents the name of
+       *  a valid, installed 64-bit ODBC driver (assuming that EnCase 64-bit is being used).
+       *  MySQL was used for this example.
+       *
+       *  The rest of the connection string is driver-specific.
+       */
+
+      db.Open("DRIVER={MySQL ODBC 8.0 Unicode Driver}; SERVER=hostname; DATABASE=scripts; UID=username; PWD=password;"); // Connection string
+
+      if (db.State() == DB::adStateOpen)
+      {
+        Console.WriteLine("Opened connection.\n");
+        DB::Recordset rs;
+        if (rs.Create())
+        {
+          variant records_affected;
+          rs.Open("SELECT * FROM scripts;", db); // The table used for this example was also called 'scripts'.
+          if (rs.State() == DB::adStateOpen)
+          {
+            Console.WriteLine("Opened recordset.\n");
+            while(!rs.EOF())
+            {
+              DB::Fields fields = rs.Fields();
+              foreach (DB::Field field in fields)
+              {
+                Console.WriteLine(field.Name() + " - " + field.Value());
+              }
+              Console.WriteLine();
+              rs.MoveNext();
+            }
+          }
+          else
+          {
+            Console.WriteLine("{0}.", SystemClass::LastError());
+          }
+        }
+      }
+      else
+      {
+        Console.WriteLine("{0}.", SystemClass::LastError());
+      }
+    }
+  }
+}
