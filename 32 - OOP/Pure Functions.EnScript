@@ -1,0 +1,125 @@
+class AnimalClass
+{
+
+  // This is a base class that isn't meant to be instantiated.
+  // Accordingly the constructor is protected.
+
+  private String                     Type;
+
+  protected AnimalClass(const String &type) :
+    Type = type
+  {
+
+  }
+
+  pure private String GetAnimalDescription();
+
+  static public AnimalClass GetAnimal(const String &type)
+  {
+    AnimalClass animal;
+    switch (type)
+    {
+      case "eagle":
+      case "owl":
+      case "vulture":
+      case "emu":
+        animal = new BirdClass(type);
+        break;
+      case "dog":
+      case "cat":
+      case "human":
+      case "elephant":
+        animal = new MammalClass(type);
+        break;
+      case "bee":
+      case "ant":
+      case "fly":
+      case "beetle":
+        animal = new InsectClass(type);
+        break;
+    }
+    return animal;
+  }
+
+  public String GetDescription()
+  {
+    return String::Format("I am {0} {1}. {2}",
+                          GetIndefiniteArticle(),
+                          Type,
+                          GetAnimalDescription());
+  }
+
+  private String GetIndefiniteArticle()
+  {
+    String retval = "a";
+    switch (Type[0])
+    {
+      case 'a':
+      case 'e':
+      case 'i':
+      case 'o':
+      case 'u':
+      retval = "an";
+    }
+    return retval;
+  }
+}
+
+class MammalClass : AnimalClass
+{
+  public MammalClass(const String &type) :
+    super(type)
+  {
+  }
+
+  public virtual String GetAnimalDescription()
+  {
+    return "As a mammal, I have mammary glands, which in the female of our species, "
+           "produce milk to feed our young. ";
+  }
+}
+
+class BirdClass : AnimalClass
+{
+  public BirdClass(const String &type) :
+    super(type)
+  {
+  }
+
+  public virtual String GetAnimalDescription()
+  {
+    return "As a bird, I am characterised by feathers, toothless beaked jaws, the "
+           "laying of hard-shelled eggs, a high metabolic rate, a four-chambered "
+           "heart, and a strong yet lightweight skeleton.";
+  }
+}
+
+class InsectClass : AnimalClass
+{
+  public InsectClass(const String &type) :
+    super(type)
+  {
+  }
+
+  public virtual String GetAnimalDescription()
+  {
+    return "As an insect, I have a chitinous exoskeleton, a three-part body, "
+           "three pairs of jointed legs, compound eyes and one pair of antennae.";
+  }
+}
+
+class MainClass
+{
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (AnimalClass animal = AnimalClass::GetAnimal("cat"))
+    {
+      SystemClass::Message(ICONINFORMATION, "Success", animal.GetDescription());
+    }
+    else
+    {
+      SystemClass::Message(ICONSTOP, "Failure", "Sorry, I don't know that type of animal.");
+    }
+  }
+}
