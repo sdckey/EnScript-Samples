@@ -30,6 +30,8 @@ A) Yes, but you won't be able to compile or run them. One option is to apply to 
 
 * https://security.opentext.com/app/become-a-developer
 
+Please note that, due to a bug in the form, you should tick ***every*** check-box and then qualify your answers under __Development Description__.
+
 __Q) Is there any documentation available for EnScript?__
 
 A) EnCase ships with an EnScript help file that contains numerous examples. There is also an EnScript class browser accessible from the EnScript editor tab in EnCase itself. An EnScript Fundamentals training manual together with a copy of the EnScript language reference guide is available from the following URL -
