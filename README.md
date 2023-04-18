@@ -54,4 +54,4 @@ A) Yes, please view [this](https://github.com/sdckey/EnScript-Samples/blob/maste
 
 __Q) When I search your code using GitHub, why I don't see all of the matching search-hits?__
 
-A) Code-searching in GitHub has some limitations - please click [here](https://docs.github.com/en/search-github/searching-on-github/searching-code#considerations-for-code-search) for more details. To overcome this, you can download your own copy of the code and search that.
+A) Code-searching in GitHub has some limitations - please click [here](https://docs.github.com/en/search-github/searching-on-github/searching-code#considerations-for-code-search) for more details. To overcome this, you should download your own copy of the code and search that.
