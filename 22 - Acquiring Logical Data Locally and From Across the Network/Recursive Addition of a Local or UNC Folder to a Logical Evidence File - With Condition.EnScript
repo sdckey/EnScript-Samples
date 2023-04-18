@@ -1,0 +1,293 @@
+/*
+ *  Script demonstrating the recursive addition of a UNC
+ *  or local folder to a logical evidence file (LEF).
+ *
+ *  This particular example uses an internal condition to
+ *  identify target files. A demo condition will be created
+ *  programatically if settings haven't been saved previously
+ *
+ *  Should there be a need to save/load conditions to/from
+ *  files, please see the following example for important
+ *  information regarding the structure of *.EnCondition
+ *  files:
+ *
+ *  - Reading Conditions From EnCondition Files.EnScript
+ *
+ *  The EnScript Samples repository contains other examples
+ *  of internal conditions. These can be found by searching
+ *  for ProgramClass.
+ *
+ *  Tested under EnCase 22.4.0.167.
+ *
+ *  Report bugs to Simon Key <skey@opentext.com>.
+ *
+ *  Tuesday 18th April 2023.
+ */
+
+/*
+ * Forward declaration for MainClass
+ */
+
+class MainClass;
+
+/*
+ * Dialog definition. This is needed because we want the user
+ * to be able to modify the condition whose structure we will set
+ * programatically if no settings have been saved.
+ */
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                                   M;
+
+  PathEditClass                                               _TargetFolderPath,
+                                                              _OutputPath;
+
+  ButtonClass                                                 _EditCondition;
+
+  MyDialogClass(WindowClass parent, const String &name, MainClass m) :
+
+    // The super class will always be constructed first
+
+    super(parent, name),
+    M = m,
+    _TargetFolderPath(this, "Target folder", START, NEXT, 300, DEFAULT, 0, M.TargetFolderPath, FOLDEROPEN | REQUIRED),
+    _OutputPath(this, "LEF output path", START, NEXT, 300, DEFAULT, 0, M.OutputPath, FILECREATE | REQUIRED),
+    _EditCondition(this, "Edit condition", START, NEXT, DEFAULT, DEFAULT, 0)
+
+  {
+
+  }
+
+  virtual void ChildEvent(const WindowClass::EventClass &event)
+  {
+    if (_EditCondition.Matches(event))
+    {
+      M.Condition.ShowEditDialog(this);
+    }
+    super::ChildEvent(event);
+  }
+}
+
+class MainClass {
+
+  static const String                                         ScriptName = "Recursive Addition of a Local or UNC Folder "
+                                                                           "to a Logical Evidence File - With Condition";
+
+  String                                                      OutputPath,
+                                                              TargetFolderPath;
+
+  bool                                                        SettingsHaveBeenSaved;
+
+  NameListClass                                               Extensions;
+
+  ProgramClass                                                Program;
+
+  ConditionClass                                              Condition;
+
+  MainClass() :
+    Extensions(),
+    Program(),
+    Condition(null, "DirectoryClass Condition")
+  {
+    // Some sample extensions that typically relate to small files,
+    // which we shall use for test purposes.
+
+    Extensions.Parse("txt,log,url,ini", ",");
+    Condition.SetClassName("DirectoryClass");
+
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    // Some additional logic is needed to deal with the script's
+    // demo condition because any pre-existing terms will be left
+    // in situ when the condition is read from disk by StorageClass.
+
+    if (options == StorageClass::WRITE)
+    {
+      SettingsHaveBeenSaved = true;
+    }
+    StorageClass s(ScriptName, options);
+    s.Value("OutputPath", OutputPath);
+    s.Value("TargetFolderPath", TargetFolderPath);
+    s.Value("Condition", Condition);
+    s.Value("SettingsHaveBeenSaved", SettingsHaveBeenSaved);
+  }
+
+  // No case needed for this example.
+
+  void Main() {
+    SystemClass::ClearConsole(1);
+    String output_folder;
+    if (LocalMachine.ResolveVariable("USERPROFILE", output_folder))
+    {
+      output_folder = String::Format("{0}\\Desktop", output_folder);
+    }
+    else
+    {
+      output_folder = "C:";
+    }
+    TargetFolderPath = output_folder;
+    OutputPath = String::Format("{0}\\Data.Lx01", output_folder);
+    MyDialogClass d(null, ScriptName, this);
+    AccessStorage();
+    BuildDemoConditionIfNecessary();
+    if (d.Execute() == SystemClass::OK)
+    {
+      String code;
+      if (Condition.GetSourceCode(code) && Program.Compile(typeof(DirectoryClass), code) && Program.Constructor())
+      {
+        AccessStorage(StorageClass::WRITE);
+        uint options = LogicalEvidenceFileClass::DELETEONCLOSEIFEMPTY;
+        if (OutputPath.GetFileExt().Compare("Lx01") == 0)
+        {
+          options |= LogicalEvidenceFileClass::LEF2;
+        }
+
+        EvidenceFileClass ev();
+        ev.SetCompression(COMPRESSFAST);
+
+        LogicalEvidenceFileClass lef();
+        if (lef.Open(OutputPath, options, ev))
+        {
+          Process(lef, TargetFolderPath);
+        }
+        Program.Destructor();
+      }
+    }
+  }
+
+  String GetTermsAsString()
+  {
+    String retval;
+    foreach (NameListClass extension in Extensions)
+    {
+      retval += String::Format("{0}\n", extension.Name());
+    }
+    return retval;
+  }
+
+  void BuildDemoConditionIfNecessary()
+  {
+    // Being able to build conditions programatically is a very
+    // powerful technique. It is put to good use by the NTFS
+    // $UsnJrnl Parser EnScript, which creates internal
+    // conditions programatically that would take hours to build
+    // by hand.
+    //
+    // - http://tiny.cc/b93qky
+    //
+    // In this case we only want to build the demo condition if
+    // settings haven't been saved previously, or if the settings
+    // file was deleted.
+
+    if (!SettingsHaveBeenSaved)
+    {
+      Condition.TermRoot().SetIsAnd(true);
+
+      TermClass file_extension_term(Condition.TermRoot(), "", SELECTED);
+      file_extension_term.SetOperator(MATCHES);
+      file_extension_term.SetProperty("Extension");
+      file_extension_term.SetValue(GetTermsAsString());
+
+      TermClass size_term(Condition.TermRoot(), "", SELECTED);
+      size_term.SetProperty("LogicalSize");
+      size_term.SetOperator(GREATER);
+      size_term.SetValue("0");
+    }
+  }
+
+  void Process(LogicalEvidenceFileClass lef, const String &target_folder_path)
+  {
+    String base_lef_folder_path = target_folder_path;
+
+    // Base path might be a UNC path, in which case we want to
+    // strip the leading backslash characters.
+    //
+    // Alternatively, if it's a DOS path, we want to strip
+    // any colons.
+    //
+    // NOTE: We're not worrying about alternate data streams
+    // or device paths in this example.
+
+    if (base_lef_folder_path.Find("\\\\") == 0)
+    {
+      base_lef_folder_path = base_lef_folder_path.SubString(2);
+    }
+    else
+    {
+      base_lef_folder_path.Trim(":", TRIMALL);
+    }
+    Recurse(lef, base_lef_folder_path, target_folder_path);
+  }
+
+  void Recurse(LogicalEvidenceFileClass lef, const String &current_lef_path, const String &current_target_folder)
+  {
+    DirRootClass dr(LocalMachine);
+    DirectoryClass parent();
+
+    /*
+    Console.WriteLine("Current target folder: {0}", current_target_folder);
+    Console.WriteLine("Current LEF folder:    {0}", current_lef_path);
+    */
+
+    if (dr.GetListing(current_target_folder, parent))
+    {
+      foreach (DirectoryClass d in parent)
+      {
+
+        String current_target_child_path = String::Format("{0}\\{1}", current_target_folder, d.Name()),
+               current_lef_child_path    = String::Format("{0}\\{1}", current_lef_path, d.Name());
+
+        if (d.IsFolder())
+        {
+          Recurse(lef, current_lef_child_path, current_target_child_path);
+        }
+        else
+        {
+          if (ShouldAdd(d))
+          {
+            AddToLef(lef, current_lef_child_path, current_target_child_path);
+          }
+        }
+      }
+    }
+  }
+
+  void AddToLef(LogicalEvidenceFileClass lef, const String &current_lef_child_path, const String &current_target_child_path)
+  {
+    Console.WriteLine("Adding '{0}' to LEF at '{1}'.", current_target_child_path, current_lef_child_path);
+
+    LocalFileClass input();
+    if (input.Open(current_target_child_path))
+    {
+      LogicalEvidenceFileClass::DataClass data();
+      data.Path = current_lef_child_path;
+      if (data.SetTarget(input, MODEFILE))
+      {
+        if (lef.Add(data))
+        {
+          Console.WriteLine("Data added successfully.");
+        }
+        else
+        {
+          Console.WriteLine("WARNING: Couldn't add data to LEF.");
+        }
+      }
+      else
+      {
+        Console.WriteLine("WARNING: Couldn't set LEF data object to target.");
+      }
+    }
+    else
+    {
+      Console.WriteLine("WARNING: Couldn't get target data.");
+    }
+  }
+
+  bool ShouldAdd(DirectoryClass d)
+  {
+    return Program.Filter(d);
+  }
+}
