@@ -49,3 +49,7 @@ A) Yes - you can ask for an example by [submitting an issue](https://github.com/
 __Q) Do you have any advice regarding transitioning EnCase 6 scripts to EnCase >= 7?__
 
 A) Yes, please view [this](https://github.com/sdckey/EnScript-Samples/blob/master/24%20-%20Transitioning%20From%20EnCase%206/EnScript%20Changes%20From%20EnCase%20V6%20to%20EnCase%20V7%20(V3).pdf) document.
+
+__Q) When I search your code using GitHub, why I don't see all of the matching search-hits?__
+
+A) Code-searching in GitHub has some limitations - please click [here](https://docs.github.com/en/search-github/searching-on-github/searching-code#considerations-for-code-search) for more details. To overcome this, you can download your own copy of the code and search that.
