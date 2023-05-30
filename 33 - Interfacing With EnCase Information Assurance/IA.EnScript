@@ -1,0 +1,78 @@
+/*
+    This is a very simple example showing how to use one the
+    EnCase Information Assurance (IA) REST APIs to retrieve
+    a list of cases.
+
+    The REST APIs are documented in the administration-help
+    that ships with IA.
+
+    Tested/developed using EnCase 22.4.
+
+    Report bugs to:
+
+    Simon Key <skey@opentext.com>
+    Snr. Principal Developer - Learning Services (EnCase)
+    OpenText Security (Reading Office, UK)
+*/
+
+class MainClass
+{
+
+  static const String               IA_HOST  = "edwebsvr",
+                                    IA_API   = "/IA/API",
+                                    IA_CMD   = "cases";
+
+  static const uint                 IA_API_PORT = 8081;
+
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    WebClientClass client();
+    if (client.Open(IA_HOST, IA_API_PORT) && client.IsValid())
+    {
+      WebServiceClass::RequestClass request();
+      WebServiceClass::ReplyClass reply();
+      request.Command = WebServiceClass::RequestClass::GET;
+      request.URL     = String::Format("{0}/{1}", IA_API, IA_CMD);
+      Console.WriteLine(request.URL);
+      if (client.Command(request, reply))
+      {
+        String reply_text;
+        reply.File.CopyToString(reply_text);
+        Console.WriteLine(reply_text);
+
+        NameVariantClass json();
+        reply.File.Seek(0);
+        if (json.ReadJSON(reply.File))
+        {
+          RecurseList(json);
+        }
+      }
+    }
+  }
+
+  void RecurseList(NameVariantClass root, uint level = 0)
+  {
+    foreach (NameVariantClass child in root)
+    {
+      WriteTabs(level);
+      Console.WriteLine("{0}: {1}", child.Name() ? child.Name() : "<no name>", child.Value.GetString() ? child.Value.GetString() : "<no value>");
+      if (child.IsFolder())
+      {
+        RecurseList(child, level + 1);
+      }
+    }
+  }
+
+  void WriteTabs(uint level)
+  {
+    for (uint i; i < level; i++)
+    {
+      Console.Write("\t");
+    }
+  }
+}
+
+
+
