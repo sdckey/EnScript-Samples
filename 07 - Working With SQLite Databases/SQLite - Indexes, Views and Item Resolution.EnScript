@@ -1,0 +1,414 @@
+/*
+
+  This script is designed to demonstrate various SQLite-related functionality:
+
+  - Creating SQLite database files in RAM.
+  - Creating SQLite tables, indexes and views.
+  - Using bound queries to insert variable data.
+  - Inserting multiple records as part of a transaction.
+  - Reading SQLite records.
+  - Resolving item monikers read from SQLite database records.
+  - Saving a SQLite database in RAM to disk.
+
+  Having created a SQLite database file in memory, the script will create a
+  table called 'log_files' into which it will write a record for each file
+  in the current case that has a *.log extension. These records will be written as
+  part of a single transaction in order to speed processing.
+
+  The information written to each record will include the associated item's path,
+  unadjusted last-written timestamp (as a UNIX-timestamp in seconds), and logical
+  size; also, the primary device GUID, device GUID, and item GUD, which
+  collectively represent the item's moniker.
+
+  The script will also add:
+
+  - A view showing the records sorted according to last-written timestamp (in
+    descending order) and item-path. The view will include an additional column
+    showing the last-written timestamp as text
+  - An index that speeds the operation of the aforementioned view.
+
+  Having written the records to the database, the script will then query them via
+  the SQLite view so that each processed item can be resolved using an instance of
+  ItemCacheClass, bookmarked, and relevant information written to the bookmark-
+  comment for validation purposes. Provided no sort-order has been applied to
+  EnCase's Bookmarks tab, the order of the bookmarks should match the order of the
+  SQLite view.
+
+  Whilst this method of item resolution is quite slow, is is robust and allows
+  iterated items to be referenced outside the scope of their iteration, which
+  isn't possible by storing those items in a linked-list or array.
+
+  Having bookmarked the processed items, the script will present a path-dialog box
+  allowing the SQLite file in RAM to be written to disk so it can be inspected.
+
+  Progress can be monitored via the console window.
+
+  Script developed using EnCase 23.4.0.99.
+
+  Report bugs to:
+
+  Simon Key [skey@opentext.com]
+  Snr. Curriculum Developer - Learning Services (EnCase)
+  OpenText Security (Reading Office, UK)
+
+  3rd January 2024
+
+*/
+
+class SQLiteDemoClass
+{
+  private static const String                    CreateTableIndexAndViewQuery = "CREATE TABLE log_files (item_path TEXT, "
+                                                                                                        "written_date INTEGER, "
+                                                                                                        "logical_size INTEGER, "
+                                                                                                        "pd_guid TEXT, "
+                                                                                                        "d_guid TEXT, "
+                                                                                                        "i_guid TEXT); "
+
+                                                                                "CREATE INDEX idx_written_date_item_path on log_files(written_date DESC, "
+                                                                                                                                     "item_path); "
+
+                                                                                "CREATE VIEW view_log_files_sorted AS "
+                                                                                                        "SELECT "
+                                                                                                          "item_path, "
+                                                                                                          "written_date, "
+                                                                                                          "DATETIME(written_date, 'unixepoch') AS 'written_date_as_text', "
+                                                                                                          "logical_size, "
+                                                                                                          "pd_guid, "
+                                                                                                          "d_guid, "
+                                                                                                          "i_guid "
+                                                                                                        "FROM log_files ORDER BY written_date DESC, item_path;",
+
+                                                 InsertLogFileRecordQuery = "INSERT INTO log_files VALUES($item_path, "
+                                                                                                         "$written_date, "
+                                                                                                         "$logical_size, "
+                                                                                                         "$pd_guid, "
+                                                                                                         "$d_guid, "
+                                                                                                         "$i_guid);",
+
+
+                                                 QueryRecordForBookmarksQuery = "SELECT item_path, "
+                                                                                       "written_date, "
+                                                                                       "written_date_as_text, "
+                                                                                       "logical_size, "
+                                                                                       "pd_guid, "
+                                                                                       "d_guid, "
+                                                                                       "i_guid FROM view_log_files_sorted;";
+
+  private MemoryFileClass                        SQLiteFile;
+
+  private SQLiteClass                            SQLiteDB;
+
+  SQLiteDemoClass() :
+    SQLiteFile(),
+    SQLiteDB()
+  {
+
+  }
+
+  private bool IsLogFile(ItemClass i)
+  {
+    return i.Extension().Compare("log") == 0;
+  }
+
+  private bool GetGUIDs(ItemClass i, String &pd_guid, String &d_guid, String &i_guid)
+  {
+    bool retval;
+    ItemMonikerClass mon();
+    if (i.GetItemMoniker(mon))
+    {
+      pd_guid = mon.Primary;
+      d_guid  = mon.Device;
+      i_guid  = mon.Item;
+      retval = true;
+    }
+    return retval;
+  }
+
+  private bool AddLogFileToDB(ItemClass i, String &error_message)
+  {
+    bool retval;
+    String pd_guid, d_guid, i_guid;
+    if (GetGUIDs(i, pd_guid, d_guid, i_guid))
+    {
+      DateClass d = i.GetDate(WRITTEN, UNADJUSTED);
+      uint written_date = d.GetUnix();
+      SQLiteClass::CommandClass cmd();
+      if (SQLiteDB.CreateCommand(cmd))
+      {
+        if (cmd.CreateDataBinding(InsertLogFileRecordQuery))
+        {
+          if (cmd.Bind("$item_path", i.ItemPath()) &&
+              cmd.Bind("$written_date", written_date) &&
+              cmd.Bind("$logical_size", i.LogicalSize()) &&
+              cmd.Bind("$pd_guid", pd_guid) &&
+              cmd.Bind("$d_guid",  d_guid) &&
+              cmd.Bind("$i_guid", i_guid)
+             )
+          {
+            retval = cmd.ExecuteNonQuery();
+          }
+        }
+        else
+        {
+          error_message = "can't bind command to INSERT query in preparation for adding log-file to database.";
+        }
+      }
+      else
+      {
+        error_message = "can't bind command to database in preparation for adding log-file to database.";
+      }
+    }
+    else
+    {
+      error_message = "can't get item-moniker GUIDs for log-file";
+    }
+    return retval;
+  }
+
+  public void BookmarkFromDB(CaseClass c)
+  {
+    ItemCacheClass cache(c);
+
+    BookmarkClass folder(c.BookmarkRoot(), "SQLite Demo Results", NodeClass::FOLDER);
+
+    SQLiteClass::CommandClass cmd();
+
+    if (SQLiteDB.CreateCommand(cmd))
+    {
+      SQLiteClass::DataReaderClass reader();
+      if (cmd.ExecuteQuery(QueryRecordForBookmarksQuery, reader))
+      {
+        if (reader.MoveFirst() && reader.Read())
+        {
+          do
+          {
+            String item_path,
+                   pd_guid,
+                   d_guid,
+                   i_guid,
+                   written_date_as_text;
+
+            ulong logical_size;
+
+            uint written_date;
+
+            if (reader.Get(0, item_path)            &&
+                reader.Get(1, written_date)         &&
+                reader.Get(2, written_date_as_text) &&
+                reader.Get(3, logical_size)         &&
+                reader.Get(4, pd_guid)              &&
+                reader.Get(5, d_guid)               &&
+                reader.Get(6, i_guid))
+            {
+              ItemMonikerClass mon(pd_guid, d_guid, i_guid);
+              if (ItemClass original_item = cache.GetMountedItem(mon))
+              {
+                BookmarkItemClass bmi(folder);
+                bmi.CopyItemData(original_item);
+                bmi.SetComment(GetComment(item_path,
+                                          written_date,
+                                          written_date_as_text,
+                                          logical_size));
+                Console.WriteLine("SUCCESS: Bookmarked '{0}' using information read from database.",
+                                  original_item.ItemPath());
+              }
+            }
+          }
+          while (reader.Read());
+        }
+      }
+
+    }
+  }
+
+  private String GetComment(const String &item_path,
+                    uint written_date,
+                    const String &written_date_as_text,
+                    ulong logical_size)
+  {
+    String retval;
+    MemoryFileClass t();
+    if (t.Open(4096, WRITETEXTCRLF))
+    {
+      t.Write("Info from database: {");
+      t.Write("Item path: '{0}'; ", item_path);
+      t.Write("Written date: {0} ({1}); ", written_date_as_text, written_date);
+      t.Write("Logical size: {0};", logical_size);
+      t.Write("}");
+      t.MoveToString(retval);
+    }
+    return retval;
+  }
+
+  public bool AddLogFilesToDB(CaseClass c)
+  {
+    bool retval;
+    String error_message;
+
+    // Begin SQLite transaction
+
+    if (ExecuteNonQuery("BEGIN;"))
+    {
+      ItemIteratorClass iter(c, NOPROXY, ALL);
+      while (ItemClass i = iter.GetNextItem())
+      {
+        if (IsLogFile(i))
+        {
+          if (AddLogFileToDB(i, error_message))
+          {
+            Console.WriteLine("SUCCESS: Added '{0}' to database.", i.ItemPath());
+          }
+          else
+          {
+            Console.WriteLine("WARNING: Unable to add '{0}' to database. Error is '{0}'.", i.ItemPath(), error_message);
+          }
+        }
+      }
+
+      // End SQLite transaction
+
+      if (ExecuteNonQuery("END;"))
+      {
+        retval = true;
+      }
+      else
+      {
+         error_message = "can't end transaction";
+      }
+    }
+    else
+    {
+      error_message = "can't begin transaction";
+    }
+    return retval;
+  }
+
+  private bool ExecuteNonQuery(const String &query)
+  {
+    bool retval;
+    SQLiteClass::CommandClass cmd();
+    if (SQLiteDB.CreateCommand(cmd))
+    {
+      if (cmd.ExecuteNonQuery(query))
+      {
+        retval = true;
+      }
+    }
+    return retval;
+  }
+
+  public bool Initialize(String &error_message)
+  {
+    bool retval;
+    if (SQLiteFile.Open(4096, WRITE))
+    {
+      if (SQLiteDB.Open(SQLiteFile, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE))
+      {
+        if (ExecuteNonQuery(CreateTableIndexAndViewQuery))
+        {
+          retval = true;
+        }
+        else
+        {
+          error_message = "can't run query to create table, index and view";
+        }
+      }
+      else
+      {
+        error_message = "can't open SQLite DB in RAM";
+      }
+    }
+    else
+    {
+      error_message = "can't open file for SQLite DB in RAM";
+    }
+    return retval;
+  }
+
+  public bool SaveDBToFile(String &db_output_path, bool &save_cancelled, String &error_message)
+  {
+    bool retval;
+    if (SystemClass::PathDialog(db_output_path, "Choose output path", "db", "SQLite Database Files\t*.db", CREATE))
+    {
+      LocalFileClass output();
+      if (output.Open(db_output_path, WRITE))
+      {
+        SQLiteDB.Close();
+        SQLiteFile.Seek(0);
+        output.WriteBuffer(SQLiteFile);
+        output.Close();
+        retval = true;
+      }
+      else
+      {
+        error_message = "unable to open output file";
+      }
+    }
+    else
+    {
+      save_cancelled = true;
+    }
+    return retval;
+  }
+}
+
+class MainClass {
+  public void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c && c.HasEvidenceList())
+    {
+      SQLiteDemoClass demo();
+      String error_message;
+      if (demo.Initialize(error_message))
+      {
+        if (demo.AddLogFilesToDB(c))
+        {
+          demo.BookmarkFromDB(c);
+          String db_output_path;
+          bool save_cancelled;
+          if (demo.SaveDBToFile(db_output_path, save_cancelled, error_message))
+          {
+            Console.WriteLine("SUCCESS: Database saved to '{0}'.", db_output_path);
+            if (!SystemClass::OpenFile(db_output_path))
+            {
+              ErrorMessage(String::Format("Unable to open database saved to '{0}'.", db_output_path));
+            }
+          }
+          else
+          {
+            if (save_cancelled)
+            {
+              InfoMessage("Database not saved to file.");
+            }
+            else
+            {
+              ErrorMessage(String::Format("Unable to save database to '{0}'. Error is '{1}'.", db_output_path, error_message));
+            }
+          }
+        }
+        else
+        {
+          ErrorMessage(String::Format("Can't add *.log files to database. Error is '{0}'.", error_message));
+        }
+      }
+      else
+      {
+        ErrorMessage(String::Format("Unable to initialize demo. Error is '{0}'.", error_message));
+      }
+    }
+    else
+    {
+      ErrorMessage("This script requires a case containing some evidence.");
+    }
+  }
+
+  private void InfoMessage(const String &msg)
+  {
+    SystemClass::Message(ICONINFORMATION, "Info", msg);
+  }
+
+  private void ErrorMessage(const String &msg)
+  {
+    SystemClass::Message(ICONSTOP, "Error", msg);
+  }
+}
