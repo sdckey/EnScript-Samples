@@ -17,26 +17,27 @@
 
   The information written to each record will include the associated item's path,
   unadjusted last-written timestamp (as a UNIX-timestamp in seconds), and logical
-  size; also, the primary device GUID, device GUID, and item GUD, which
-  collectively represent the item's moniker.
+  size; also, the primary device GUID, device GUID, and item GUD, which are
+  collectively referred to as the item's moniker.
 
   The script will also add:
 
   - A view showing the records sorted according to last-written timestamp (in
     descending order) and item-path. The view will include an additional column
-    showing the last-written timestamp as text
+    showing the last-written timestamp as text.
   - An index that speeds the operation of the aforementioned view.
 
-  Having written the records to the database, the script will then query them via
-  the SQLite view so that each processed item can be resolved using an instance of
-  ItemCacheClass, bookmarked, and relevant information written to the bookmark-
-  comment for validation purposes. Provided no sort-order has been applied to
-  EnCase's Bookmarks tab, the order of the bookmarks should match the order of the
-  SQLite view.
+  Having written the records to the database, the script will use the SQLite view
+  to query them and then use the information they contain to resolve each processed
+  item using an instance of ItemCacheClass so it can be bookmarked and relevant
+  information written to the bookmark-comment for validation purposes. Provided
+  no sort-order has been applied to EnCase's Bookmarks tab, the order of the
+  bookmarks should match the order of the SQLite view.
 
   Whilst this method of item resolution is quite slow, is is robust and allows
-  iterated items to be referenced outside the scope of their iteration, which
-  isn't possible by storing those items in a linked-list or array.
+  iterated items to be referenced outside the scope of their iteration. Given that
+  the items exist only whilst being iterated, this is something that cannot be
+  achieved by storing those items in an array or linked-list.
 
   Having bookmarked the processed items, the script will present a path-dialog box
   allowing the SQLite file in RAM to be written to disk so it can be inspected.
