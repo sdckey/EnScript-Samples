@@ -1,0 +1,83 @@
+/*
+
+  This script demonstrates a simple wait-loop of the type that might be used
+  to detect whether an external process has finished running.
+
+  The script implements a time-limited loop that uses
+  ConnectionClass::PathExists() to detect the presence of a file-based flag
+  that would be created by the external process upon completion. Each
+  iteration of the loop uses SystemClass::Sleep() to wait for 1-second.
+
+  The external process might be a Python script launched by EnScript using
+  ExecuteClass. In such cases, the code responsible for launching the
+  external process would need to ensure that any pre-existing flag was
+  removed beforehand.
+
+  An example of ExecuteClass is contained in the EnScript help-file that
+  ships with EnCase.
+
+  Script developed using EnCase 23.4.0.99.
+
+  Report bugs to:
+
+  Simon Key [skey@opentext.com]
+  Snr. Curriculum Developer - Learning Services (EnCase)
+  OpenText Security (Reading Office, UK)
+
+  9th January 2024
+
+*/
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+
+    String feedback,
+           flag_path = "C:\\flag.txt";
+
+    uint max_wait_time_seconds = 10;
+
+    if (CheckForFlag(flag_path, max_wait_time_seconds, feedback))
+    {
+      SystemClass::Message(ICONINFORMATION, "Success",
+                           String::Format("Feedback is '{0}'.", feedback));
+    }
+    else
+    {
+      SystemClass::Message(ICONSTOP, "Failure",
+                           String::Format("Feedback is '{0}'.", feedback));
+    }
+  }
+
+  bool CheckForFlag(const String &flag_path,
+                    uint max_wait_time_seconds,
+                    String &feedback)
+  {
+    bool found_flag, timed_out;
+    DateClass start(), now();
+    start.Now();
+    while (!found_flag && !timed_out)
+    {
+      if (LocalMachine.PathExists(flag_path))
+      {
+        found_flag = true;
+        feedback = "found flag";
+      }
+      else
+      {
+        now.Now();
+        if (now.GetUnix() - start.GetUnix() > max_wait_time_seconds)
+        {
+          timed_out = true;
+          feedback = "timed out";
+        }
+        else
+        {
+          Console.WriteLine("Sleeping...");
+          SystemClass::Sleep(1000); // Sleep 1-second.
+        }
+      }
+    }
+    return found_flag;
+  }
+}
