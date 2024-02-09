@@ -22,11 +22,11 @@ class MainClass {
   *
   * Please read the inline comments for additional information.
   *
-  * Tested under EnCase 21.01.00.68.
+  * Tested under EnCase 23.4.0.99.
   *
   * Report bugs to Simon Key <skey@opentext.com>.
   *
-  * 8th April, 2021.
+  * 9th February 2024.
   */
 
   static const uint                                                   timeout_in_minutes = 60;
@@ -140,8 +140,13 @@ class MainClass {
     {
       CaseName =  CaseName.SubString(0, pos);
       C = new CaseClass(null, CaseName);
-      C.SetUseBaseFolder(true);
-      C.SetPrimaryEvFolder(evidence_cache_folder);
+
+      C.SetInfo(SETINFO_NAME, CaseName);
+      C.SetInfo(SETINFO_PATH, CasePath);
+      C.SetInfo(SETINFO_CASE_FOLDER, case_folder);
+      C.SetInfo(SETINFO_USE_BASE_FOLDER, true);
+      C.SetInfo(SETINFO_PRIMARY_EV_FOLDER, evidence_cache_folder);
+
       if (AddEvidence())
       {
         return C.Write(CasePath);
