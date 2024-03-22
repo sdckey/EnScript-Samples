@@ -1,0 +1,227 @@
+typelib                             WSH                                 "WScript.Shell"
+
+class MainClass;
+
+class URLDialogClass : DialogClass
+{
+  enum                                                                  ActionOptions
+                                                                        {
+                                                                          OPEN,
+                                                                          SHORTCUT
+                                                                        }
+  String                                                                URL;
+  int                                                                   ActionOption;
+  StringEditClass                                                       _URL;
+  RadioButtonClass                                                      _ActionOption;
+
+  URLDialogClass(WindowClass parent, const String &url)  :
+    URL = url,
+    super(parent, "Options"),
+    _URL(this, Lang::T6015, START, START, 300, DEFAULT, 0, URL, -1, DISABLED),
+    _ActionOption(this, "Choose the action to perform",
+                  START, NEXT, DEFAULT, DEFAULT, 0, ActionOption,
+                  "Open URL\tCreate URL shortcut on desktop")
+  {
+
+  }
+
+}
+
+class MyHandlerClass : HandlerClass
+{
+  class EditDialogClass : DialogClass
+  {
+    String                                                              Name,
+                                                                        URL;
+
+    StringEditClass                                                     _Name,
+                                                                        _URL;
+
+    EditDialogClass(WindowClass parent, const String &name, NameValueClass node) :
+      Name = node.Name(),
+      URL = node.Value(),
+      super(parent, name),
+      _Name(this, Lang::T0112, START, START, 300, DEFAULT, 0, Name, -1, REQUIRED),
+      _URL(this, Lang::T6015, START, NEXT, 300, DEFAULT, 0, URL, -1, REQUIRED)
+    {
+
+    }
+
+    virtual bool CanClose()
+    {
+      bool retval;
+      NameListClass urlPrefixes();
+      urlPrefixes.Parse("http://,https://", ",");
+      foreach(NameListClass prefix in urlPrefixes)
+      {
+        if (_URL.GetText().Find(prefix.Name()) == 0)
+        {
+          retval = true;
+          break;
+        }
+      }
+      if (!retval)
+      {
+        ErrorMessage("URL prefix must be 'http://' or 'https://'");
+      }
+      return retval && super::CanClose();
+    }
+  }
+
+  NameFieldClass                                                        NameField;
+  StringFieldClass                                                      URLField;
+
+  MyHandlerClass()  :
+    super(null, "Web Site", 0, typeof(NameValueClass), "Web Sites", IconClass::WEBCACHE),
+    NameField(this, Lang::T0112, NameFieldClass::SHOWICON, NameValueClass::property(Name), "n"),
+    URLField(this, Lang::T6015, StringFieldClass::HYPERLINK, NameValueClass::property(Value), "v")
+  {
+  }
+
+  virtual bool EditDialog(HandlerClass::NodeEventClass event)
+  {
+    NameValueClass node = NameValueClass::TypeCast(event.Node);
+    EditDialogClass dialog(event.Window, event.Title, node);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      node.SetName(dialog.Name);
+      node.SetValue(dialog.URL);
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  virtual NodeClass NewNode(HandlerClass::NodeEventClass event)
+  {
+    return new NameValueClass(null, "Web Site Name", 0, "http://");
+  }
+
+  virtual MenuReply MenuEvent(MenuClass m, NodeEventClass event) {
+  NameValueClass n = NameValueClass::TypeCast(event.Node);
+  if (m == MenuOpenLink) // HandlerClass::MenuOpenLink represents a hyperlink that's been clicked
+  {
+    if (event.Field == URLField)
+    {
+      URLDialogClass dialog(event.Window, n.Value());
+      if (dialog.Execute() == SystemClass::OK)
+      {
+        if (dialog.ActionOption == URLDialogClass::OPEN)
+        {
+          if (!SystemClass::OpenFile(n.Value()))
+          {
+            event.Window.ErrorMessage("Can't open URL!");
+          }
+        }
+        else
+        {
+          if (MainClass::CreateURLShortcut(n))
+          {
+            DisplayFeedback("Success", "Shortcut created on desktop.");
+          }
+          else
+          {
+            event.Window.ErrorMessage("Unable to create shortcut on desktop!");
+          }
+        }
+      }
+    }
+    return MENUNONE;
+  }
+  else
+    return HandlerClass::MenuEvent(m, event);
+  }
+
+  void DisplayFeedback(const String &title, const String &message)
+  {
+    SystemClass::Message(SystemClass::ICONINFORMATION, title, message);
+  }
+}
+
+class MyDialogClass : DialogClass
+{
+  MainClass                                                             M;
+  MyHandlerClass                                                        Handler;
+  TreeTableEditClass                                                    _URLs;
+
+  MyDialogClass(MainClass m)  :
+    M = m,
+    Handler(),
+    super(null, "My Web Sites"),
+    _URLs(this, "Web Sites (click on a URL to open it or create a desktop-shortcut to it)",
+          START, START, 600, 200, 0, M.URLs, ContextClass::CANADDNODE  | ContextClass::CANDELETENODE |
+                                             ContextClass::CANEDITNODE | ContextClass::CANCHECK      |
+                                             ContextClass::CANDRAGNODE | ContextClass::CANRENAMENODE,
+                                             TABLEDEFAULT,
+                                             Handler)
+
+  {
+    SetViewOptions(VIEWOK | VIEWCANCEL | VIEWSIZE | VIEWMAX | VIEWMIN);
+    OKButton.SetCaption("Save");
+  }
+}
+
+class MainClass
+{
+  NameValueClass                                                        URLs;
+
+  MainClass()  :
+    URLs()
+  {
+    new NameValueClass(URLs, "OpenText", 0, "http://www.opentext.com");
+    new NameValueClass(URLs, "BBC News", 0, "http://news.bbc.co.uk");
+    new NameValueClass(URLs, "Twitter", 0, "http://www.twitter.com");
+    new NameValueClass(URLs, "Facebook", 0, "http://www.facebook.com");
+    new NameValueClass(URLs, "Microsoft", 0, "http://www.microsoft.com");
+    new NameValueClass(URLs, "Wikipedia", 0, "http://www.wikipedia.org");
+  }
+
+  void Main()
+  {
+    SystemClass::ClearConsole(1);
+    AccessStorage();
+    MyDialogClass dialog(this);
+    if (dialog.Execute() == SystemClass::OK)
+    {
+      AccessStorage(StorageClass::WRITE);
+    }
+  }
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass s(GetScriptNameFromPath(), options);
+    s.Value("URLs", URLs);
+  }
+
+  static String GetScriptNameFromPath()
+  {
+    String retval = SystemClass::ScriptPath().GetFilename();
+    retval.ReplaceExtension();
+    return retval;
+  }
+
+  static bool CreateURLShortcut(NameValueClass n)
+  {
+    bool retval;
+    #ifdef WSH
+      WSH::WshShell shell;
+      if (shell.Create())
+      {
+        String userDesktopPath = shell.SpecialFolders().Item("Desktop");
+        if (userDesktopPath.GetLength())
+        {
+          String outputPath = String::Format("{0}\\{1}.url", userDesktopPath, n.Name());
+          if (WSH::WshURLShortcut shortcut = WSH::WshURLShortcut::TypeCast(shell.CreateShortcut(outputPath)))
+          {
+            shortcut.SetTargetPath(n.Value());
+            shortcut.Save();
+            retval = true;
+          }
+        }
+      }
+    #endif
+    return retval;
+  }
+}
