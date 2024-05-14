@@ -1,0 +1,344 @@
+/*
+  Example demonstrating SplitWindowClass.
+
+  Tested under EnCase 23.04.00.99.
+
+  Report bugs to:
+
+  Simon Key [skey@opentext.com]
+  Snr. Curriculum Developer - Learning Services (EnCase)
+  OpenText Security (Reading Office, UK)
+
+  14th May 2024
+*/
+
+class MainClass;
+
+class MediaTypeListClass : NameListClass
+{
+  class MediaTypeListHandlerClass : HandlerClass
+  {
+    MediaTypeListHandlerClass() :
+      super(null, "Media Type", 0, typeof(MediaTypeListClass), "Media Types", IconClass::SNAPSHOT)
+    {
+    }
+  }
+
+  NameListClass Books,
+                Films;
+
+  MediaTypeListClass() :
+    Books(this, "Books", FOLDER),
+    Films(this, "Films", FOLDER)
+  {
+  }
+}
+
+class MediaClass : NameListClass
+{
+   enum                          Genres
+                                 {
+                                   NONE ("No Genre"),
+                                   THRILLER ("Thriller"),
+                                   COMEDY ("Comedy"),
+                                   DRAMA ("Drama"),
+                                   ACTION_ADVENTURE ("Action & Adventure"),
+                                   HORROR ("Horror"),
+                                   CRIME ("Crime"),
+                                   SCIFI ("Science Fiction")
+                                 }
+
+   property uint                 Year;
+
+   Genres                        GenreValue;
+
+   property String               URL;
+
+   property String Genre()
+   {
+     return Genres::DisplayText(GenreValue);
+   }
+
+   MediaClass(MediaClass parent = null, const String &name = "", uint options = 0, uint year = 0, Genres genreValue = NONE, const String &url = "") :
+     super(parent, name, options),
+     Year = year,
+     GenreValue = genreValue,
+     URL = url
+   {
+
+   }
+}
+
+class BookClass : MediaClass
+{
+
+  class BookHandlerClass : HandlerClass
+  {
+    NameFieldClass               NameField;
+    IntFieldClass                YearField;
+    StringFieldClass             GenreField,
+                                 AuthorField,
+                                 URLField;
+    IntFieldClass                NumberOfPagesField;
+
+
+    BookHandlerClass() :
+      super(null, "Book", 0, typeof(BookClass), "Books", IconClass::BOOKMARK),
+      NameField(this, "Book Title", SHOWICON, BookClass::property(Name), "n"),
+      YearField(this, "First Published", 0, BookClass::property(Year), "y"),
+      GenreField(this, "Genre", 0, BookClass::property(Genre), "g"),
+      AuthorField(this, "Author", 0, BookClass::property(Author), "a"),
+      URLField(this, "View at Amazon", HYPERLINK, BookClass::property(URL), "url"),
+      NumberOfPagesField(this, "Number of Pages", 0, BookClass::property(NumberOfPages), "num")
+    {
+
+    }
+
+    virtual HandlerClass::MenuReply MenuEvent(MenuClass menu, HandlerClass::NodeEventClass event)
+    {
+      if (menu == MenuOpenLink)
+      {
+        if (event.Field == URLField && (BookClass book = BookClass::TypeCast(event.Node)) && book.URL.GetLength())
+        {
+          SystemClass::OpenFile(book.URL);
+        }
+        return MENUNONE;
+      }
+      else
+      {
+        return MenuEvent(menu, event);
+      }
+    }
+
+  }
+
+  property String                Author;
+
+  property uint                  NumberOfPages;
+
+  BookClass(BookClass parent = null, const String &name = "", uint options = 0, uint year = 0, Genres genreValue = NONE, const String &author = "", const String &url = "", uint numberOfPages = 0) :
+    super(parent, name, options, year, genreValue, url),
+    Author = author,
+    NumberOfPages = numberOfPages
+  {
+
+  }
+
+}
+
+class FilmClass : MediaClass
+{
+
+  class FilmHandlerClass : HandlerClass
+  {
+    NameFieldClass               NameField;
+    IntFieldClass                YearField;
+    StringFieldClass             GenreField,
+                                 DirectorField,
+                                 StudioField,
+                                 URLField;
+    IntFieldClass                RunningTimeField;
+
+    FilmHandlerClass() :
+      super(null, "Film", 0, typeof(FilmClass), "Films", IconClass::MACHINE),
+      NameField(this, "Film Title", SHOWICON, FilmClass::property(Name), "n"),
+      YearField(this, "Year Released", 0, FilmClass::property(Year), "y"),
+      GenreField(this, "Genre", 0, FilmClass::property(Genre), "g"),
+      DirectorField(this, "Director", 0, FilmClass::property(Director), "dir"),
+      StudioField(this, "Studio", 0, FilmClass::property(Studio), "stud"),
+      URLField(this, "View at IMDB", HYPERLINK, FilmClass::property(URL), "am"),
+      RunningTimeField(this, "Running Time", 0, FilmClass::property(RunningTime), "rt")
+    {
+
+    }
+
+    virtual HandlerClass::MenuReply MenuEvent(MenuClass menu, HandlerClass::NodeEventClass event)
+    {
+      if (menu == MenuOpenLink)
+      {
+        if (event.Field == URLField && (FilmClass film = FilmClass::TypeCast(event.Node)) && film.URL.GetLength())
+        {
+          SystemClass::OpenFile(film.URL);
+        }
+        return MENUNONE;
+      }
+      else
+      {
+        return super::MenuEvent(menu, event);
+      }
+
+    }
+
+  }
+
+  property String                 Director,
+                                  Studio;
+
+  property uint                   RunningTime;
+
+  FilmClass(FilmClass parent = null, const String &name = "", uint options = 0, uint year = 0, Genres genreValue = NONE, const String &director = "", const String &studio = "", uint runningTime = 0, const String &url = "") :
+    super(parent, name, options, year, genreValue, url),
+    Director = director,
+    Studio = studio,
+    RunningTime = runningTime
+  {
+
+  }
+}
+
+class MediaDataClass
+{
+  MediaTypeListClass MediaTypes;
+  NameListClass      Blank;
+  FilmClass          Films;
+  BookClass          Books;
+  ContextClass       Context;
+
+  MediaDataClass() :
+    MediaTypes(),
+    Blank(),
+    Films(),
+    Books()
+  {
+    new BookClass(Books, "Doctor Sleep", 0, 2013, HORROR, "Stephen King", "http://www.amazon.co.uk/Doctor-Sleep-Shining-Book-2-ebook/dp/B009LOJK1Q/", 497);
+    new BookClass(Books, "Bridget Jones: Mad About The Boy", 0, 2013, COMEDY, "Helen Fielding", "http://www.amazon.co.uk/Bridget-Jones-Mad-About-Boy-ebook/dp/B00D1VKZ3M/", 498);
+    new FilmClass(Films, "The Godfather", 0, 1972, CRIME, "Francis Ford Coppola", "Paramount Pictures", 175, "http://www.imdb.com/title/tt0068646/");
+    new FilmClass(Films, "Blade Runner", 0, 1982, SCIFI, "Ridley Scott", "Warner Bros", 117, "http://www.imdb.com/title/tt0083658/");
+
+  }
+
+  void UpdateView(ListEditClass table, NodeClass node)
+  {
+    if (node == MediaTypes.Books)
+    {
+      Context = new ContextClass(null, "", 0, Books, new BookClass::BookHandlerClass());
+    }
+    else if (node == MediaTypes.Films)
+    {
+      Context = new ContextClass(null, "", 0, Films, new FilmClass::FilmHandlerClass());
+    }
+    else
+    {
+      Context = new ContextClass(null, "", 0, Blank);
+    }
+    table.SetContext(Context);
+  }
+}
+
+class MyMediaToolWindowClass : ToolWindowClass
+{
+  ListEditClass Media;
+
+
+  MyMediaToolWindowClass(WindowClass parent, const String &title, MediaDataClass data) :
+    super(parent, title, 0, 0, 0, 0, 0, HASTOOLBAR ),
+    Media(this, "", 0, 0, 0, 0, 0, null, 0, TABLEDEFAULT)
+  {
+    data.UpdateView(Media, null);
+    Media.SetView(ContextClass::PANETABLE);
+  }
+}
+
+class HelpWindowClass: WindowClass
+{
+  HelpWindowClass(WindowClass parent):
+    WindowClass(parent, "", 0, 0, 0, 0, 0)
+  {
+  }
+
+  virtual void PaintEvent(GraphicsClass g)
+  {
+    RectClass r(g.ClientArea());
+    g.Fill(r, ColorClass(227, 227, 227));
+    g.DrawString("Choose a category that interests you", r, GraphicsClass::DRAWCENTER);
+  }
+
+  virtual void SizeEvent(GraphicsClass g)
+  {
+    Invalidate();
+  }
+}
+
+class MySplitWindowClass : SplitWindowClass
+{
+  enum {
+    PANEMEDIA = 10000,  // Should not collide with other control ids
+    PANELIST,
+    PANEHELP
+  }
+
+
+  MediaDataClass         Data;
+  TreeEditClass          Tree;
+  MyMediaToolWindowClass List;
+
+  MySplitWindowClass(WindowClass parent, const String &title, int x, int y, int width, int height, MediaDataClass data) :
+    super(parent, title, x, y, width, height, 0, 0),
+    Data = data
+  {
+    // Splitter definition is a tree structure. Each node is a Window with a code. That code is used in WindowEvent() below
+    SplitInfoClass splits(null, "", SplitInfoClass::HORIZONTAL, 0, SPLITLEFT / 2),
+                   top(splits, "", 0, PANEHELP),
+                   bottom(splits, "", 0, 0, SPLITLEFT),
+                   media(bottom, "", 0, PANEMEDIA),
+                   list(bottom, "", 0, PANELIST);
+
+    MySplitWindowClass::SetSplits(splits);
+  }
+
+  virtual WindowClass WindowEvent(const MenuEventClass menu)
+  {
+    switch (menu.Id) {
+      case PANEMEDIA:
+        Tree = new TreeEditClass(menu.GetWindow(), "", 0, 0, 0, 0, 0, Data.MediaTypes, 0, new MediaTypeListClass::MediaTypeListHandlerClass());
+        return Tree;
+
+      case PANELIST:
+        List = new MyMediaToolWindowClass(menu.GetWindow(), "", Data);
+        return List;
+
+      case PANEHELP:
+        return new HelpWindowClass(menu.GetWindow());
+    }
+    return null;
+  }
+
+  void CheckNode()
+  {
+     Data.UpdateView(List.Media, Tree.GetValue());
+     List.Input();
+  }
+}
+
+
+class MyDialogClass : DialogClass
+{
+  MediaDataClass     Data;
+  MySplitWindowClass _SplitWindow;
+
+  MyDialogClass(MediaDataClass data) :
+    super(null, "SplitWindowClass Example"),
+    _SplitWindow(this, "", START, NEXT, 600, 200, data),
+    Data = data
+  {
+    SetViewOptions(VIEWSIZE | VIEWMAX | VIEWMIN | VIEWCANCEL);
+  }
+
+  virtual void ChildEvent(const EventClass &event)
+  {
+    if (event.Type() == CHILDNEWNODE && event.Id == MySplitWindowClass::PANEMEDIA)
+      _SplitWindow.CheckNode();
+    else
+      super::ChildEvent(event);
+  }
+}
+
+class MainClass
+{
+  void Main()
+  {
+    MediaDataClass data();
+    MyDialogClass dialog(data);
+    dialog.Execute();
+  }
+}

@@ -1,0 +1,78 @@
+/*
+  Example demonstrating ComboEditClass dialog control.
+
+  Output is via the console.
+
+  Tested under EnCase 23.04.00.99.
+
+  Report bugs to:
+
+  Simon Key [skey@opentext.com]
+  Snr. Curriculum Developer - Learning Services (EnCase)
+  OpenText Security (Reading Office, UK)
+
+  14th May 2024
+
+*/
+
+class MainClass
+{
+
+  NameListClass            List;
+
+  MainClass() :
+    List()
+  {
+    List.Parse(",One,Two,Three,", ",");
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    MyDialogClass d(this);
+    if (d.Execute() == SystemClass::OK)
+    {
+      if (NameListClass n = NameListClass::TypeCast(d._List.GetValue()))
+      {
+        if (n == List.FirstChild())
+        {
+          Console.WriteLine("Value: Default.");
+        }
+        else
+        {
+          Console.WriteLine("Value: {0}.", n.Name());
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("Cancelled.");
+    }
+  }
+}
+
+class MyDialogClass : DialogClass
+{
+  MainClass                M;
+  ComboEditClass           _List;
+
+  MyDialogClass(MainClass m) :
+    super(null, "ComboEditClass Example"),
+    _List(this, "Value (required)", START, NEXT, 150, DEFAULT, 0, M.List, REQUIRED),
+    M = m
+  {
+    /*
+      The following code is needed to highlight the first child.
+    */
+    _List.SetValue(M.List.FirstChild());
+  }
+
+  virtual void CheckControls()
+  {
+    /*
+      Comment-out the following line to allow the user to click OK
+      even if the empty default option is selected.
+    */
+    EnableClose(_List.GetValue() != M.List.FirstChild());
+    super::CheckControls();
+  }
+}
