@@ -57,7 +57,7 @@ class MyDialogClass : DialogClass
 
   MyDialogClass(MainClass m) :
     super(null, "ComboEditClass Example"),
-    _List(this, "Value (required)", START, NEXT, 150, DEFAULT, 0, M.List, REQUIRED),
+    _List(this, "Value (required)", START, NEXT, 150, DEFAULT, 0, M.List, 0),
     M = m
   {
     /*
