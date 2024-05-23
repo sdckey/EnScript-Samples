@@ -1,0 +1,330 @@
+/*
+  This script searches all entries/records in the current
+  case for those whose names match the names contained in
+  a nominated list-file.
+
+  The names supplied can be treated as exact names or GREP
+  search expressions.
+
+  In either case, the script will perform a case-insensitive
+  comparison.
+
+  Output is by way of a result-set. Feedback is provided via
+  console.
+
+  Please report bugs to:
+
+  Simon Key <skey@opentext.com>
+  Sr. Principal Courseware Developer
+
+  23rd May 2024
+*/
+
+class MainClass {
+
+  NameListClass                Names;
+
+  bool                         UseGrep;
+
+  String                       ScriptName,
+                               FilenameListPath,
+                               ResultSetName;
+
+  SearchClass                  Search;
+
+  KeywordClass                 Keywords;
+
+
+  MainClass() :
+    Names(),
+    Search(),
+    Keywords()
+  {
+    ScriptName = SystemClass::ScriptPath().GetFilename();
+    ScriptName.ReplaceExtension();
+    ResultSetName = String::Format("{0} Results", ScriptName);
+  }
+
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      AccessStorage();
+      MyDialogClass d(this, c);
+      if (d.Execute() == SystemClass::OK)
+      {
+        AccessStorage(StorageClass::WRITE);
+        ResultSetClass results();
+        if (results.Open(c.TemporaryFolder()))
+        {
+          String error_message;
+          if (BuildSearchEngine(error_message))
+          {
+            Console.WriteLine("Filenames read: {0}.", Keywords.Count());
+
+            /*
+              Other iteration modes available in addition to ALL:
+
+               - CURRENTVIEW
+               - CURRENTVIEW_SELECTED
+               - CURRENTFOLDER
+               - CURRENTFOLDER_SELECTED
+               - RESULT
+               - TAGGED
+
+              For RESULT and TAGGED, the result-set name or tag(s) would
+              need to be specified as the 4th constructor parameter or by
+              combining the NOPROXY option with PROMPT.
+
+            */
+
+            ItemIteratorClass iter(c, NOPROXY, ALL);
+            uint items_found;
+            while (ItemClass i = iter.GetNextItem())
+            {
+              bool item_is_responsive;
+              if (UseGrep && (Search.Find(i.Name()) >= 0))
+              {
+                item_is_responsive = true;
+              }
+              else if (Keywords.Find(i.Name()))
+              {
+                item_is_responsive = true;
+              }
+              if (item_is_responsive)
+              {
+                Console.WriteLine(i.ItemPath());
+                ResultSetClass::DataClass data();
+                ResultClass result();
+                result.CopyItemData(i);
+                String comment = String::Format("Responsive item {0}",
+                                                String::FormatInt(items_found++,
+                                                                  int::DECIMAL, 0, 4)
+                                               );
+                result.SetComment(comment);
+                data.Item = result;
+                if (!(results.Add(data) && results.Flush()))
+                {
+                  Console.WriteLine("***WARNING*** - Unable to add '{0}' to result-set.",
+                                    i.ItemPath());
+                }
+              }
+            }
+            if (results.Close() && results.AddToCase(c, ResultSetName))
+            {
+              String message = String::Format("Items found: {0}.", items_found);
+              Console.WriteLine(message);
+              SystemClass::Message(ICONINFORMATION,
+                                   ScriptName,
+                                   message
+                                   );
+            }
+            else
+            {
+              SystemClass::Message(ICONSTOP,
+                                   ScriptName,
+                                   "Unable to add results to case.");
+            }
+          }
+          else
+          {
+            SystemClass::Message(ICONSTOP, ScriptName, error_message);
+          }
+        }
+        else
+        {
+          SystemClass::Message(ICONSTOP, ScriptName, "Unable to open result-set.");
+        }
+      }
+    }
+    else
+    {
+      SystemClass::Message(ICONSTOP, ScriptName, "This script requires a case.");
+    }
+  }
+
+  /*
+    Build a clean de-duplicated list of keywords from the file
+    specified by the user.
+
+    The keyword-list has a dual purpose:
+
+    - It will be used to build a search-engine that will be
+      used to perform a GREP-search of each entry/record's
+      name. That's assuming the GREP option has been
+      specified.
+    - If the GREP option hasn't been specified, the keyword-
+      list will be used in conjunction with the
+      NodeClass::Find() method to find entries/records
+      whose name exactly matches the Name() property of one
+      of the keywords in the list.
+
+    These options are made possible because the Name() and
+    Expression() properties of each keyword are being set to
+    the same value.
+
+  */
+
+  bool GetKeywords(String &error_message)
+  {
+    bool retval;
+    LocalFileClass filename_list_file();
+
+    /*
+      Expect a Windows-format (CR/LF) text file, not a UNIX
+      one.
+    */
+
+    if (filename_list_file.Open(FilenameListPath, TEXTCRLF))
+    {
+      String name;
+      while (filename_list_file.More())
+      {
+        filename_list_file.ReadString(name, -1, "\n");
+
+        // There might be whitespace.
+
+        name.Trim(" \t", TRIMSTART | TRIMEND);
+
+        // The name might be empty or a duplicate.
+
+        if (name && !Keywords.Find(name))
+        {
+          KeywordClass k(Keywords, name);
+          k.SetExpression(name);
+
+          /*
+            Depending on the option specified by the user,
+            the keywords may be used to search the name of
+            each item being processed. That name will be
+            stored as Unicode within EnCase hence we must
+            specify each keyword as a Unicode one.
+          */
+
+          k.SetIsUnicode(true);
+          k.SetIsGrep(UseGrep);
+        }
+      }
+      if (!Keywords.Count())
+      {
+        error_message = "Unable to parse any names from the input file.";
+      }
+      else
+      {
+        retval = true;
+      }
+    }
+    else
+    {
+      error_message = "Can't open input file.";
+    }
+    return retval;
+  }
+
+  /*
+    Build the search-engine to be used to search the name
+    of each item if the GREP option is used.
+
+    This function in calls the GetKeywords() function
+    defined above.
+  */
+
+  bool BuildSearchEngine(String &error_message)
+  {
+    bool retval;
+    if (GetKeywords(error_message))
+    {
+      retval = true;
+      foreach (KeywordClass k in Keywords)
+      {
+        /*
+          The SearchClass::AddKeyword() method will fail
+          if the keyword is a malformed GREP one.
+        */
+        if (!Search.AddKeyword(k))
+        {
+          error_message = String::Format("Can't add '{0}' to search engine.\n\nError is '{1}'.",
+                                         k.Expression(),
+                                         SystemClass::LastError());
+          retval = false;
+          break;
+        }
+      }
+    }
+    if (retval)
+    {
+      retval = Search.Create();
+    }
+    return retval;
+  }
+
+  /*
+    Store user variables in persistent storage.
+  */
+
+  void AccessStorage(uint options = 0)
+  {
+    StorageClass s(ScriptName, options);
+    s.Value("FilenameListPath", FilenameListPath);
+    s.Value("ResultSetName", UseGrep);
+    s.Value("UseGrep", UseGrep);
+  }
+}
+
+class MyDialogClass : DialogClass
+{
+  MainClass                    M;
+  CaseClass                    C;
+  PathEditClass                _NameListFilePath;
+  StringEditClass              _ResultSetName;
+  CheckBoxClass                _UseGrep;
+
+  MyDialogClass(MainClass m, CaseClass c) :
+    super(null, m.ScriptName),
+    M = m,
+    C = c,
+    _NameListFilePath(this, "Filename List Path",
+                       START, NEXT,
+                       300, DEFAULT,
+                       0,
+                       M.FilenameListPath,
+                       REQUIRED | FILEOPEN,
+                       "Text Files\t*.txt"),
+    _ResultSetName(this, "Result-Set Name",
+                    START, NEXT,
+                    300, DEFAULT,
+                    0,
+                    M.ResultSetName,
+                    -1,
+                    REQUIRED
+                  ),
+    _UseGrep(this, "Treat filenames as GREP expressions",
+              START, NEXT,
+              DEFAULT, DEFAULT,
+              0,
+              M.UseGrep
+            )
+  {
+
+  }
+
+  virtual bool CanClose()
+  {
+    bool retval = super::CanClose();
+
+    /*
+      Must test the value in the control rather that the bound
+      variable - the latter isn't set till the dialog closes or
+      the developer forces it to be updated.
+    */
+
+    if (retval && C.ResultsRoot().Find(_ResultSetName.GetText()))
+    {
+      retval = SystemClass::Message(ICONEXCLAMATION | MBOKCANCEL,
+                                    M.ScriptName,
+                                    "Result-set name already exists.\n\nOverwrite?"
+                                   ) == SystemClass::OK;
+    }
+    return retval;
+  }
+}
