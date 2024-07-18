@@ -28,7 +28,7 @@ __Q) Can I write EnScripts without EnCase?__
 
 A) Yes, but you won't be able to compile or run them. One option is to apply to become an EnCase App Central Developer. If you're accepted, you will receive an EnCase licence that can be used for EnScript development. For more details click the following link -
 
-* mailto:encasetraining@opentext.com?subject=Becoming%20an%20EnCase%20App%20Central%20Developer
+* [EnCase App Central Developer Enquiry](mailto:encasetraining@opentext.com?subject=Becoming%20an%20EnCase%20App%20Central%20Developer)
 
 __Q) Is there any documentation available for EnScript?__
 
