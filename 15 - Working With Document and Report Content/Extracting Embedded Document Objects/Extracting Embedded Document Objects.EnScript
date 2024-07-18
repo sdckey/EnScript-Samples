@@ -1,0 +1,135 @@
+/*
+
+  This script leverages the functionality of the OutsideIn
+  viewing library to extract embedded objects from
+  supported file-types, e.g., Microsoft Word documents.
+
+  The script will process the currently highlighted item,
+  writing its output into a sub-folder of the base folder
+  specified by the user. If no folder is specified, the
+  current case's export folder will be used.
+
+  The name of each sub-folder will be the name of the
+  file preceded by the file's item-GUID. This will
+  prevent problems that would otherwise be caused by
+  duplicate filenames.
+
+  The script will act recursively such that objects
+  within objects will be extracted by default.
+
+  Please note that whilst the extension of each object
+  will be preserved, the name itself will be a generic one
+  assigned during the extraction process.
+
+  Script developed using EnCase 24.02.00.103.
+
+  Report bugs to:
+
+  Simon Key [skey@opentext.com]
+  Snr. Curriculum Developer - Learning Services (EnCase)
+  OpenText Security (Reading Office, UK)
+
+  18th July 2024
+
+*/
+
+
+class MainClass {
+  void Main(CaseClass c) {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      /*
+
+        We don't need the offset and size, but we must
+        still provide EnCase with the variables needed
+        to store those values.
+
+      */
+
+      long offset, size;
+      if (ItemClass i = c.GetCurrentItem(offset, size))
+      {
+        ItemCacheClass cache(c);
+        if (FileClass f = cache.GetRawFile(i, 0))
+        {
+          GUIDClass item_guid();
+          if (GetItemGUID(i, item_guid))
+          {
+            String folder = c.ExportFolder();
+            FolderDialogClass d("Choose base output folder", folder);
+            if (d.Execute() == SystemClass::OK)
+            {
+              String subfolder = String::Format("{0}\\{1} - {2}", folder, item_guid, i.Name());
+              if (LocalMachine.CreateFolder(subfolder))
+              {
+                String exception;
+                DocumentClass d();
+                if (d.ExtractEmbeddedObjects(f, subfolder, exception, true))
+                {
+                  SystemClass::BrowsePath(subfolder);
+                }
+                else
+                {
+                  ErrorMessage(SystemClass::LastError());
+                }
+              }
+              else
+              {
+                ErrorMessage("Unable to open/create output folder.");
+              }
+            }
+          }
+          else
+          {
+            ErrorMessage("Can't get GUID for highlighted item!");
+          }
+        }
+        else
+        {
+          ErrorMessage("Can't get the data for the highlighted item!");
+        }
+      }
+      else
+      {
+        ErrorMessage("Can't get the highlighted item!");
+      }
+    }
+    else
+    {
+      ErrorMessage("No case!");
+    }
+  }
+
+  void ErrorMessage(const String &message)
+  {
+    SystemClass::Message(ICONSTOP, "Error", message);
+  }
+
+  bool GetItemGUID(ItemClass i, GUIDClass &item_guid)
+  {
+    bool retval;
+    ItemMonikerClass mon();
+    if (i.GetItemMoniker(mon))
+    {
+     item_guid = mon.Item;
+     retval = true;
+    }
+    return retval;
+  }
+}
+
+class FolderDialogClass : DialogClass
+{
+  String                                           Folder;
+
+  PathEditClass                                    _Folder;
+
+  FolderDialogClass(const String &title, String &folder) :
+    super(null, title),
+    Folder = folder,
+    _Folder(this, "Path", START, NEXT, 300, DEFAULT, 0, Folder, REQUIRED | FOLDEROPEN)
+  {
+
+  }
+}
