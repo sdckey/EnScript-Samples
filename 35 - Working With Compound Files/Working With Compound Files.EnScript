@@ -1,0 +1,207 @@
+/*
+
+  This script will iterate the current case targeting XLSX, PPTX,
+  and DOCX documents that are current and have a non-zero logical
+  size.
+
+  Each document will be mounted as a compound-file whereupon its
+  contents will be checked for the presence of an internal 'media'
+  folder. This is where pictures embedded in documents of this
+  type are usually stored.
+
+  A NameValueClass list-object is used to specify the types of
+  files that should be processed - the Name() property of each
+  child-item in the list contains the file-extension; the Value()
+  property contains the internal path to the media folder.
+
+  If the media folder contains one or more files, the script will
+  extract those files into a sub-folder of the designated output
+  folder. The latter will be created in the current case's export-
+  folder and have the same name as the script.
+
+  The script will only create folders when necessary albeit
+  additional logic would be needed to prevent path-collisions
+  caused by folders created by a previous iteration of the
+  script - such folders will not be overwritten automatically.
+
+  Feedback is provided via the console window.
+
+  Tested using EnCase 24.4.0.69.
+
+  Report bugs to:
+
+  Simon Key <skey@opentext.com>
+  Sr. Principal Courseware Developer
+  EnCase Training
+
+  2nd January 2025
+
+*/
+
+class MainClass
+{
+  uint                                                 Index;
+
+  NameValueClass                                       ExtensionsAndInternalMediaPaths;
+
+  MainClass() :
+
+    // Instantiate and construct the list object within the constructor's
+    // initializer area, which is marked by a colon (:).
+
+    ExtensionsAndInternalMediaPaths()
+  {
+
+    // Add a child-item representing each type of target document.
+
+    new NameValueClass(ExtensionsAndInternalMediaPaths, "xlsx", 0, "xl\\media");   // Excel
+    new NameValueClass(ExtensionsAndInternalMediaPaths, "pptx", 0, "ppt\\media");  // PowerPoint
+    new NameValueClass(ExtensionsAndInternalMediaPaths, "docx", 0, "word\\media"); // Word
+  }
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      // Derive the name of the base output folder from the name of the script.
+
+      String script_name = SystemClass::ScriptPath().GetFilename();
+
+      // Strip the script's file-extension.
+
+      script_name.ReplaceExtension();
+
+      // Prepend the name with the path to the current case's export folder.
+
+      String base_output_folder = String::Format("{0}\\{1}", c.ExportFolder(), script_name);
+
+      // Only iterate top-level entries in the case. Do not pre-compute calculated properties
+      // (hash, sig, etc.) or recurse into compound files that have already been mounted.
+
+      ItemIteratorClass iter(c, NOPROXY | NORECURSE, ALL);
+      while (EntryClass e = iter.GetNextEntry())
+      {
+
+        // Check to see if the current entry's extension is in the list.
+
+        if (NameValueClass extension_and_internal_media_path = ExtensionsAndInternalMediaPaths.Find(e.Extension()))
+        {
+
+          // Invoke the ShouldProcess() function defined below to make sure that the entry isn't
+          // deleted or 0-bytes in size.
+
+          if (ShouldProcess(e))
+          {
+
+            // Try and mount the entry as a compound volume on a temporary basis.
+
+            if (VolumeClass mounted = e.MountVolume(0))
+            {
+
+              // Check for the presence of the media folder at the correct internal path.
+
+              if (EntryClass media_folder = mounted.Find(extension_and_internal_media_path.Value()))
+              {
+
+                // Check for at least one child-entry in the media folder.
+
+                if (media_folder.FirstChild())
+                {
+                  Console.WriteLine("Processing '{0}'.", e.ItemPath());
+
+                  // Construct the output sub-folder's path before creating the sub-folder itself.
+                  // Increment the Index variable after use, so it can act as counter in addition
+                  // to preventing duplicate sub-folder names.
+
+                  String output_sub_folder_path = String::Format("{0}\\{1} - {2}",
+                                                                 base_output_folder,
+                                                                 String::FormatInt(Index++, int::DECIMAL, 0, 3),
+                                                                 e.Name());
+                  // Try and create the output sub-folder and any parent folders that don't
+                  // already exist, e.g., the base output folder itself.
+
+                  if (LocalMachine.CreateFolder(output_sub_folder_path, NOTIFYSHELL | CREATEFOLDERALL))
+                  {
+                    // Iterate the child-entries in the media folder.
+
+                    foreach (EntryClass media_item_entry in media_folder)
+                    {
+
+                      // Get the file-data for the current child entry.
+
+                      EntryFileClass in();
+                      if (in.Open(media_item_entry))
+                      {
+
+                        // Create and open an output file with the same
+                        // name as the child entry.
+
+                        LocalFileClass out();
+                        if (out.Open(String::Format("{0}\\{1}",
+                                                    output_sub_folder_path,
+                                                    media_item_entry.Name()
+                                                   ),
+                                                   WRITE
+                                    )
+                           )
+                        {
+
+                          // Copy the data.
+
+                          out.WriteBuffer(in);
+
+                          // No need to close the file - files are closed
+                          // automatically when they go out of scope.
+                        }
+                      }
+                    } // End of media-item iteration loop
+                  }
+                }
+              }
+            }
+          }
+        }
+      } // End of document iteration loop
+
+      // Check that the Index variable is non-zero. If it isn't, nothing has
+      // been extracted and we shouldn't try and open the base output
+      // folder - the latter is unlikely to exist unless the script has been
+      // run previously.
+
+      if (Index)
+      {
+        if (SystemClass::Message(ICONINFORMATION | MBOKCANCEL,
+                                 "Information",
+                                 String::Format("Located {0} XLSX, PPTX, or DOCX {1} with media attachments.\n\n"
+
+                                                "Click OK to browse to output folder.",
+                                                Index,
+                                                Index == 1 ? "file" : "files"
+                                               )
+                                ) == SystemClass::OK
+           )
+        {
+
+          // Browse to the base output folder.
+
+          SystemClass::BrowsePath(base_output_folder);
+        }
+      }
+      else
+      {
+        SystemClass::Message(ICONEXCLAMATION,
+                             "Warning",
+                             "Unable to locate any DOCX, PPTX, or DOCX files with media attachments.");
+      }
+    }
+  }
+
+  // Function to check that a document is current and doesn't
+  // have a non-zero size.
+
+  bool ShouldProcess(EntryClass e)
+  {
+    return !e.IsDeleted() && e.LogicalSize();
+  }
+}
