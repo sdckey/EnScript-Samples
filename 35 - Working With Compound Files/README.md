@@ -1,4 +1,4 @@
-#Additional Information
+# Additional Information
 
 If should be noted that the OutsideIn viewing library can be used to extract embedded objects from supported documents:
 
