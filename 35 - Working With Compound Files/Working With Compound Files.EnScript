@@ -94,7 +94,9 @@ class MainClass
           if (ShouldProcess(e))
           {
 
-            // Try and mount the entry as a compound volume on a temporary basis.
+            // Try and mount the entry as a compound volume on a temporary basis. In this case the
+            // underlying structure is that of a ZIP file, but EnCase supports numerous other
+            // compound file types.
 
             if (VolumeClass mounted = e.MountVolume(0))
             {
