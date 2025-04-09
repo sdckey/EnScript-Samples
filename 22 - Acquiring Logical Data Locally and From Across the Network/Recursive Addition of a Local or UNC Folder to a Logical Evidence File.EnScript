@@ -2,11 +2,11 @@
  *  Script demonstrating the recursive addition of a UNC
  *  or local folder to a logical evidence file (LEF).
  *
- *  Tested under EnCase 20.02.00.65.
+ *  Tested under EnCase 25.01.00.64.
  *
  *  Report bugs to Simon Key <skey@opentext.com>.
  *
- *  Wednesday 26th February 2020.
+ *  9th April, 2025.
  */
 
 class MainClass {
@@ -80,13 +80,16 @@ class MainClass {
     {
       base_lef_folder_path.Trim(":", TRIMALL);
     }
-    Recurse(lef, base_lef_folder_path, target_folder_path);
+
+    DirectoryClass root(),
+                   target(root, base_lef_folder_path);
+
+    Recurse(lef, base_lef_folder_path, target_folder_path, target);
   }
 
-  void Recurse(LogicalEvidenceFileClass lef, const String &current_lef_path, const String &current_target_folder)
+  void Recurse(LogicalEvidenceFileClass lef, const String &current_lef_path, const String &current_target_folder, DirectoryClass parent)
   {
     DirRootClass dr(LocalMachine);
-    DirectoryClass parent();
 
     /*
     Console.WriteLine("Current target folder: {0}", current_target_folder);
@@ -95,19 +98,19 @@ class MainClass {
 
     if (dr.GetListing(current_target_folder, parent))
     {
-      foreach (DirectoryClass d in parent)
+      foreach (DirectoryClass child in parent)
       {
 
-        String current_target_child_path = String::Format("{0}\\{1}", current_target_folder, d.Name()),
-               current_lef_child_path    = String::Format("{0}\\{1}", current_lef_path, d.Name());
+        String current_target_child_path = String::Format("{0}\\{1}", current_target_folder, child.Name()),
+               current_lef_child_path    = String::Format("{0}\\{1}", current_lef_path, child.Name());
 
-        if (d.IsFolder())
+        if (child.IsFolder())
         {
-          Recurse(lef, current_lef_child_path, current_target_child_path);
+          Recurse(lef, current_lef_child_path, current_target_child_path, child);
         }
         else
         {
-          if (ShouldAdd(d))
+          if (ShouldAdd(child))
           {
             AddToLef(lef, current_lef_child_path, current_target_child_path);
           }
