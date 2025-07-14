@@ -11,9 +11,9 @@ Each script in this repository has been tested/developed using the current versi
 
 If you'd like to see an example of how to accomplish a particular thing please feel free to raise an issue and I will look at it as soon as I'm able.
 
-A substantial number of production EnScripts are available on EnCase App Central -
+A substantial number of production EnScripts are available on the OpenText Marketplace -
 
-* https://security.opentext.com/app
+* https://marketplace.opentext.com/cybersecurity/category/security-cloud
 
 ## FAQ
 __Q) Why are many EnScripts in *.EnPack format? Is it to hide the code?__
