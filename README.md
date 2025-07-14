@@ -46,7 +46,7 @@ A) Yes -
 
 __Q) Can I ask for a script example showing how to accomplish a particular task?__
 
-A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code. The idea is to teach *you* how to write EnScript, not to provide an EnScript development service!
+A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code. The idea is to teach *you* how to write EnScript, not to provide an EnScript development service.
 
 __Q) Do you have any advice regarding transitioning EnCase 6 scripts to EnCase/OTF/OTEI >= 7?__
 
@@ -54,4 +54,4 @@ A) Yes, please view [this](https://github.com/sdckey/EnScript-Samples/blob/maste
 
 __Q) When I search your code using GitHub, why don't I see all of the matching search-hits?__
 
-A) Code-searching in GitHub has some limitations - please click [here](https://docs.github.com/en/search-github/searching-on-github/searching-code#considerations-for-code-search) for more details. To overcome this, you should download your own copy of the code and search that.
+A) Code-searching in GitHub has some limitations - click [here](https://docs.github.com/en/search-github/searching-on-github/searching-code#considerations-for-code-search) for more details. To overcome this, you can download your own copy of the code and search that.
