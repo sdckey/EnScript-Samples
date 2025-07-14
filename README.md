@@ -1,5 +1,5 @@
 # EnScript-Samples
-This repository is a collection of EnScript code samples for use in the [OpenText](https://www.opentext.com/products-and-solutions/products/security) EnCase application. It is very much a work in progress.
+This repository is a collection of EnScript code samples for use in the [OpenText Forensic and Endpoint Investigator applications] (https://www.opentext.com/solutions/digital-forensic-investigations) (formerly EnCase). It is very much a work in progress.
 
 **Please note that you use the code in this repository at your own risk. No warranty regarding its use is given or implied, and I cannot provide any support for it.**
 
