@@ -24,7 +24,7 @@ A) Maybe, but in most cases the code is packaged because it consists of more tha
 
 __Q) Can I have a script's source-code?__
 
-A) It depends on the author - you will have to ask. GSI Training EnScripts are not open-source - they took a lot of time to develop. That said, you can always email the author if you'd like to know a little more about one particular aspect of a script's operation. He/she will probably be happy to send you a code-snippet demonstrating how to accomplish a particular task.
+A) It depends on the author - you will have to ask. OpenText Training EnScripts are not open-source - they took a lot of time to develop. That said, you can always email the author if you'd like to know a little more about one particular aspect of a script's operation. He/she will probably be happy to send you a code-snippet demonstrating how to accomplish a particular task.
 
 __Q) Can I write EnScripts without OTF/OTEI?__
 
