@@ -20,7 +20,7 @@ A substantial number of production EnScripts are available on the OpenText Marke
 ## FAQ
 __Q) Why are many EnScripts in *.EnPack format? Is it to hide the code?__
 
-A) Maybe, but in most cases the code is packaged because it consists of more than one source-code file. Packaging multiple files together overcomes compatibility issues when two scripts use different versions of the same library file.
+A) Maybe, but in most cases the code is packaged because it consists of more than one source-code file. Packaging multiple files together overcomes compatibility issues when two scripts use different versions of the same library.
 
 __Q) Can I have a script's source-code?__
 
