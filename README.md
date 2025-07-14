@@ -9,7 +9,7 @@ EnScript is a proprietary scripting language with roots in C++. It also has elem
 
 EnScripts can include other EnScript library files, resource files and .NET assemblies. They can be packaged into files with an 'EnPack' file-extension.
 
-Each script in this repository has been tested/developed using the current version of EnCase unless specified otherwise.
+Each script in this repository has been tested/developed using the current version of OTF/OTEI unless specified otherwise.
 
 If you'd like to see an example of how to accomplish a particular thing please feel free to raise an issue and I will look at it as soon as I'm able.
 
@@ -26,15 +26,15 @@ __Q) Can I have a script's source-code?__
 
 A) It depends on the author - you will have to ask. GSI Training EnScripts are not open-source - they took a lot of time to develop. That said, you can always email the author if you'd like to know a little more about one particular aspect of a script's operation. He/she will probably be happy to send you a code-snippet demonstrating how to accomplish a particular task.
 
-__Q) Can I write EnScripts without EnCase?__
+__Q) Can I write EnScripts without OTF/OTEI?__
 
-A) Yes, but you won't be able to compile or run them. One option is to apply to become an EnCase App Central Developer. If you're accepted, you will receive an EnCase licence that can be used for EnScript development. For more details click the following link -
+A) Yes, but you won't be able to compile or run them. One option is to apply to become an App Central Developer. If you're accepted, you will receive an OTF licence that can be used for EnScript development. For more details click the following link -
 
-* [EnCase App Central Developer Enquiry](mailto:encasetraining@opentext.com?subject=Becoming%20an%20EnCase%20App%20Central%20Developer)
+* [App Central Developer Enquiry](mailto:encasetraining@opentext.com?subject=Becoming%20an20App%20Central%20Developer)
 
 __Q) Is there any documentation available for EnScript?__
 
-A) EnCase ships with an EnScript help file that contains numerous examples. There is also an EnScript class browser accessible from the EnScript editor tab in EnCase itself. An EnScript Fundamentals training manual together with a copy of the EnScript language reference guide is available from the following URL -
+A) OTF/OTEI ships with an EnScript help file that contains numerous examples. There is also an EnScript class browser accessible from the EnScript editor tab in OTF/OTEI itself. An EnScript Fundamentals training manual together with a copy of the EnScript language reference guide is available from the following URL -
 
 * http://tiny.cc/0zw4ky
 
@@ -48,7 +48,7 @@ __Q) Can I ask for a script example showing how to accomplish a particular task?
 
 A) Yes - you can ask for an example by [submitting an issue](https://github.com/sdckey/EnScript-Samples/issues) with the **enhancement** label. Please bear in mind that I can't accommodate every request nor can I provide anything but generic code. The idea is to teach *you* how to write EnScript, not to provide an EnScript development service!
 
-__Q) Do you have any advice regarding transitioning EnCase 6 scripts to EnCase >= 7?__
+__Q) Do you have any advice regarding transitioning EnCase 6 scripts to EnCase/OTF/OTEI >= 7?__
 
 A) Yes, please view [this](https://github.com/sdckey/EnScript-Samples/blob/master/24%20-%20Transitioning%20From%20EnCase%206/EnScript%20Changes%20From%20EnCase%20V6%20to%20EnCase%20V7%20(V3).pdf) document.
 
