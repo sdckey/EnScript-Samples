@@ -1,0 +1,120 @@
+class MainClass
+{
+  /*
+      This EnScript sample demonstrates scripted acquisition of the first Microsoft
+      virtual disk mounted in the local machine. The connection to the local machine
+      is defined as a `ConnectionClass` object called `LocalMachine`.
+
+      A connection to a remote machine can be obtained via `BathClass::GetConnection()` -
+      see the sample code in the EnScript help file as well as the other examples in
+      the *Working With Encase Endpoint Investigator* section of the EnScript Samples
+      GitHub repository.
+
+      This type of acquisition routes all of the target data via the OpenText Endpoint
+      Investigator (EnCase) application. To acquire data direct to a remote server, a remote
+      acquisition would need to be performed instead.
+
+      Note that this example will also work with the OpenText Forensic (EnCase) application -
+      use of `LocalMachine` does not require an installation of Endpoint Investigator.
+
+      Tested using EnCase 25.4.0.58.
+
+  */
+
+  void Main(CaseClass c)
+  {
+    SystemClass::ClearConsole(1);
+    if (c)
+    {
+      DeviceInfoClass device();
+
+      /*
+          Enumerate local disks via the LocalMachine ConnectionClass object. As mentioned
+          above, we could also supply a connection to a remote machine running the Endpoint
+          Investigator agent - see ConnectionClass in the EnScript help file.
+      */
+
+      if (device.Create(LocalMachine, DeviceInfoClass::PROCESSPHYSICAL))
+      {
+
+        /*
+            The EnScript debugger can  be used to inspect the list of enumerated devices.
+        */
+
+        foreach (DeviceInfoClass di in device)
+        {
+
+          /*
+              Pick the first MS virtual disk.
+          */
+
+          if (di.Label().Compare("Msft") == 0)
+          {
+            if (DeviceClass dev = di.Mount(c))
+            {
+              EvidenceFileClass ef();
+
+              /*
+                As an alternative to invoking the acquisition dialog, we could set the
+                parameters programatically.
+
+              */
+
+              if (ef.ShowAcqDialog(null, dev))
+              {
+                Console.WriteLine("Acquiring disk ...");
+                if (Acquire(dev, ef))
+                {
+                  Console.WriteLine("Acquisition complete.");
+
+                  /*
+                      Double-check that the evidence file was created.
+                  */
+
+                  if (LocalMachine.PathExists(ef.Path()))
+                  {
+                    Console.WriteLine("Adding evidence to case ...");
+                    EvidenceClass evidence();
+                    new EvidencePathClass (evidence.EvidencePathRoot(), ef.Path());
+                    evidence.SetOpenMode(EvidenceClass::OPENEVIDENCEFILE);
+                    EvidenceOpenClass evopen();
+                    evopen.SetMountOptions(MOUNTTOCACHE);
+                    if (evidence.AddToCase(c, evopen))
+                    {
+                      Console.WriteLine("Added evidence to case.");
+                    }
+                  }
+                  else
+                  {
+                    Console.WriteLine("Cannot find evidence file.");
+                  }
+                }
+                else
+                {
+                  Console.WriteLine("Acquisition failed.");
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    else
+    {
+      Console.WriteLine("Please open a case for this example to work.");
+    }
+  }
+
+  bool Acquire(DeviceClass dev, EvidenceFileClass ef)
+  {
+    if (ef.Path().GetFileExt().Compare("Ex01") == 0)
+    {
+      return ef.AcquireEv2(dev, ef.Path());
+    }
+    else
+    {
+      return ef.Acquire(dev, ef.Path());
+    }
+  }
+}
