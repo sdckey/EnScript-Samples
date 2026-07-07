@@ -4,29 +4,35 @@ class MainClass {
   * This script will load the evidence files from a nominated
   * folder into a new case and then invoke the evidence processor
   * to perform a hash and signature analysis. Alias files having
-  * a JPEG file-signature will be bookmarked after which the case
-  * will be saved.
+  * a JPEG file-signature will then be bookmarked after which the
+  * case will be saved.
   *
-  * The case path and evidence-folder can be specified via the
+  * The case-path and evidence-folder can be specified via the
   * command-line, in which case the script will not prompt for
-  * them. A batch-file with example command-line options should
+  * them.
+  *
+  * If this option is taken, the path to the evidence case-folders
+  * must exist beforehand, but the case file and and any sub-
+  * folders will be created automatically.
+  *
+  * A batch-file with example command-line options should
   * have accompanied this script.
   *
-  * Note that the evidence-folder dialog-box may pop-up out of
-  * view behind the main EnCase window.
+  * Note that when using the GUI, the evidence-folder dialog-box
+  * may pop-up out of view behind the main EnCase window.
   *
   * The processor-options file (with a *.EnProc file-extension)
-  * should be in EnCase's "ProcessorOptions" folder. Processor-
-  * options files can be created using the Evidence Processor
-  * dialog.
+  * should be in EnCase's "ProcessorOptions" folder. Other
+  * processor-options files can be created using the Evidence
+  * Processor dialog.
   *
   * Please read the inline comments for additional information.
   *
-  * Tested under EnCase 23.4.0.99.
+  * Tested under EnCase 26.02.00.09.
   *
   * Report bugs to Simon Key <skey@opentext.com>.
   *
-  * 9th February 2024.
+  * 7th July, 2026.
   */
 
   static const uint                                                   timeout_in_minutes = 60;
