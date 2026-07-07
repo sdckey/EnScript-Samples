@@ -83,7 +83,7 @@ class MainClass {
         else
         {
           Console.WriteLine("Can't get the processor options (*.EnProc) file.");
-        }
+        }
       }
       else
       {
@@ -145,11 +145,26 @@ class MainClass {
       C.SetInfo(SETINFO_PATH, CasePath);
       C.SetInfo(SETINFO_CASE_FOLDER, case_folder);
       C.SetInfo(SETINFO_USE_BASE_FOLDER, true);
-      C.SetInfo(SETINFO_PRIMARY_EV_FOLDER, evidence_cache_folder);
 
-      if (AddEvidence())
+      /*
+
+        In order to use the evidence cache in the base case folder, we
+        must save and re-open the case otherwise the results of evidence
+        processing will be saved in the default evidence cache location,
+        which is typically:
+
+        - %USERPROFILE%\Documents\EnCase\EvidenceCache
+
+      */
+
+      if (C.Write(CasePath))
       {
-        return C.Write(CasePath);
+        C = new CaseClass();
+        if (C.Read(CasePath))
+        {
+          AddEvidence();
+          return C.Write(CasePath);
+        }
       }
     }
     return false;
@@ -229,6 +244,11 @@ class MainClass {
    /*
     * Process all evidence in the  case
     */
+
+    foreach (EvidenceClass ev in C.EvidenceRoot())
+    {
+      C.ClearEvidenceCache(ev, true, true);
+    }
 
     if (manager.AddProcessingJobs(C, C.EvidenceRoot(), ep_options_path))
     {
