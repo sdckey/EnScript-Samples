@@ -11,9 +11,9 @@ class MainClass {
   * command-line, in which case the script will not prompt for
   * them.
   *
-  * If this option is taken, the path to the evidence case-folders
-  * must exist beforehand, but the case file and and any sub-
-  * folders will be created automatically.
+  * If this option is taken, the evidence and case folders must
+  * exist beforehand, but the case file and and any sub-folders
+  * will be created automatically.
   *
   * A batch-file with example command-line options should
   * have accompanied this script.
