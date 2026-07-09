@@ -1,30 +1,65 @@
 class MainClass {
 
  /*
-  * This script will load the evidence files from a nominated
-  * folder into a new case and then invoke the evidence processor
-  * to perform a hash and signature analysis. Alias files having
-  * a JPEG file-signature will then be bookmarked after which the
-  * case will be saved.
+  * This script will create a new case, add the evidence files
+  * from a designated folder, and then invoke the evidence
+  * processor to perform a hash and signature analysis. The
+  * script will then iterate through the case looking for items
+  * that match certain hash and signature criteria.
   *
-  * The case-path and evidence-folder can be specified via the
-  * command-line, in which case the script will not prompt for
-  * them.
+  * Depending on the value of the 'UseResultSetsInsteadOfBookmarks'
+  * variable, responsive items will be added to a result-set or
+  * bookmarked.
   *
-  * If this option is taken, the evidence and case folders must
-  * exist beforehand, but the case file and and any sub-folders
-  * will be created automatically.
+  * There must be no other instance of EnCase running for this
+  * script to work. The evidence processor will be launched using
+  * the same method as that used by the main EnCase Processor Options
+  * dialog, which is also an EnScript.
   *
-  * A batch-file with example command-line options should
-  * have accompanied this script.
+  * The case-path, evidence-folder, and optionally, a case-template
+  * can be specified via the command-line. Alternatively, the
+  * script will prompt the user to supply this information via
+  * the GUI.
   *
-  * Note that when using the GUI, the evidence-folder dialog-box
-  * may pop-up out of view behind the main EnCase window.
+  * A case template is necessary if the examiner wishes to
+  * identify/exclude files using hash analysis.
   *
-  * The processor-options file (with a *.EnProc file-extension)
-  * should be in EnCase's "ProcessorOptions" folder. Other
-  * processor-options files can be created using the Evidence
-  * Processor dialog.
+  * The evidence folder, case folder, and where appropriate, the
+  * case-template must exist beforehand, but the case file and
+  * and any sub-folders will be created automatically.
+  *
+  * A batch-file with example command-line options is packaged
+  * with this script.
+  *
+  * When using the GUI, the evidence-folder dialog-box may pop-up
+  * out of view behind the main EnCase window.
+  *
+  * In this particular example, once evidence processing has
+  * completed, the script will attempt to identify files matching
+  * one of two hash-sets: "Security Docs" and "Yellow Banner
+  * Pics". The hash library containing these two hash-sets was
+  * set as the primary hash library for the case-template used to
+  * test the script. Reference to the case-template can be seen
+  * in the accompanying batch file.
+  *
+  * The script has also been configured to identify JPEG files
+  * that don't have the correct file-extension, i.e., aliases.
+  *
+  * By default, result-sets will be created instead of bookmarks.
+  * This is because the former incur a minimal overhead when
+  * compared to the latter, which are stored in the case file and
+  * occupy a significant amount of memory.
+  *
+  * If bookmarking is chosen, these will be saved just before
+  * the script exits, which may result in a significant delay
+  * if there are many bookmarks. If there is any doubt, EnCase's
+  * activity can be monitored using the Windows Task Manager's
+  * Details tab.
+  *
+  * Progress can also be monitored using the Processor Manager tab
+  * and the console - notwithstanding that EnCase will be
+  * minimised when the script is run via a batch file, it can be
+  * restored for this purpose.
   *
   * Please read the inline comments for additional information.
   *
@@ -32,32 +67,64 @@ class MainClass {
   *
   * Report bugs to Simon Key <skey@opentext.com>.
   *
-  * 7th July, 2026.
+  * 8th July, 20266.
   */
 
   static const uint                                                   timeout_in_minutes = 60;
 
-  static const String                                                 enproc_file_name = "Hash And Signature Analysis.EnProc";
+  static const String                                                 enproc_file_name             = "Hash And Signature Analysis.EnProc",
+                                                                      bookmark_log_format          = "Bookmarked '{0}'.",
+                                                                      bookmark_status_bar_format   = "Items bookmarked: {0}",
+                                                                      result_set_log_format        = "Added '{0}' to result-set.",
+                                                                      result_set_status_bar_format = "Items added to result-set: {0}",
+                                                                      jpeg_alias_output_name       = "Items Identified as JPEG Aliases",
+                                                                      known_docs_output_name       = "Known Docs",
+                                                                      notable_pics_output_name     = "Notable Pics";
 
-  String                                                              EvidenceFolder, // Sub-folders will not be processed
+  enum                                                                LogTypes
+                                                                      {
+                                                                        INFO,
+                                                                        WARN,
+                                                                        FATAL
+                                                                      }
+
+  String                                                              EvidenceFolder,   // Sub-folders will not be processed.
                                                                       CasePath,
+                                                                      CaseTemplatePath, // Needed to perform hash analysis.
                                                                       CaseName;
+
+  bool                                                                UseResultSetsInsteadOfBookmarks; // Less memory overhead
 
   uint                                                                Count;
 
   CaseClass                                                           C;
 
+  ResultSetClass                                                      JPEGAliasResults,
+                                                                      KnownDocResults,
+                                                                      NotablePicResults;
+
   NameListClass                                                       EvExtensions;
 
   MainClass() :
-    EvExtensions()
+    EvExtensions(),
+    UseResultSetsInsteadOfBookmarks = true,
+    JPEGAliasResults(),
+    KnownDocResults(),
+    NotablePicResults()
   {
     EvExtensions.Parse("Lx01,L01,Ex01,E01", ",");
   }
 
+  void Log(const String &message, LogTypes log_type = INFO)
+  {
+    DateClass now();
+    now.Now();
+    Console.WriteLine("[{0}] [{1}] {2}", now.GetString(), LogTypes::SourceText(log_type), message);
+  }
+
   void Main() {
     SystemClass::ClearConsole(1);
-    Console.WriteLine("Script started.");
+    Log("Script started.");
     if (GetEvidenceFolderAndCasePath())
     {
       if (GetCase())
@@ -67,55 +134,97 @@ class MainClass {
         if (LocalMachine.PathExists(ep_options_path))
         {
           String error_message;
+
           if (ProcessEvidence(ep_options_path, error_message))
           {
-            Process();
-            Console.WriteLine("Items bookmarked: {0}.", Count);
-            if (C.Write(CasePath))
+            if (!UseResultSetsInsteadOfBookmarks || CreateResultSets())
             {
-              Console.WriteLine("Case saved.");
-              Console.WriteLine("Script finished.");
+              Process();
+              Log(String::Format("Items {0}: {1}.",
+                  UseResultSetsInsteadOfBookmarks ? "added to result-set" : "bookmarked",
+                  Count));
+              if (!UseResultSetsInsteadOfBookmarks || FinaliseResultSets())
+              {
+                if (C.Write(CasePath))
+                {
+                  Log("Case saved.");
+                  Log("Script finished.");
+                }
+                else
+                {
+                  Log("Unable to save case.", FATAL);
+                }
+              }
+              else
+              {
+                Log("Unable to finalise result-sets!", FATAL);
+              }
             }
             else
             {
-              Console.WriteLine("Unable to save case.");
+              Log("Can't open result-sets in case's temporary folder!", FATAL);
             }
           }
           else
           {
-            Console.WriteLine(error_message);
+            Log(error_message, FATAL);
           }
         }
         else
         {
-          Console.WriteLine("Can't get the processor options (*.EnProc) file.");
+          Log("Can't get the processor options (*.EnProc) file!", FATAL);
         }
       }
       else
       {
-        Console.WriteLine("No case or evidence in the case!");
+        Log("No case or no evidence in the case!", FATAL);
       }
     }
     else
     {
-      Console.WriteLine("Can't identify the case and evidence-folder paths.\n\n"
+      Log("Can't identify the case and evidence-folder paths!\n\n"
 
-                        "Make sure you're using the correct command-line parameters."
-                       );
+           "Make sure you're using the correct command-line parameters.",
+           FATAL
+          );
     }
+  }
+
+  bool FinaliseResultSets()
+  {
+    return (JPEGAliasResults.Close() && JPEGAliasResults.AddToCase(C, jpeg_alias_output_name)) &&
+           (KnownDocResults.Close() && KnownDocResults.AddToCase(C, known_docs_output_name))   &&
+           (NotablePicResults.Close() && NotablePicResults.AddToCase(C, notable_pics_output_name));
+  }
+
+  bool CreateResultSets()
+  {
+    /*
+     *  To-do - Create a custom list to store the result-sets.
+     */
+
+    return JPEGAliasResults.Open(C.TemporaryFolder()) &&
+           KnownDocResults.Open(C.TemporaryFolder())  &&
+           NotablePicResults.Open(C.TemporaryFolder());
   }
 
   bool GetEvidenceFolderAndCasePathFromDialogs()
   {
-    return SystemClass::PathDialog(CasePath, "Choose case path", "case", "EnCase Case Files\t*.case", CREATE) &&
-           SystemClass::FolderDialog(EvidenceFolder, "Choose evidence folder");
+    bool retval;
+    retval = SystemClass::PathDialog(CasePath, "Choose case path", "case", "EnCase Case Files\t*.case", CREATE) &&
+             SystemClass::FolderDialog(EvidenceFolder, "Choose evidence folder");
+    if (retval && (SystemClass::Message(ICONQUESTION | MBYESNO, "Question", "Use a case template?") == SystemClass::YES))
+    {
+      retval = SystemClass::PathDialog(CaseTemplatePath, "Choose case template", "CaseTemplate", "EnCase Case Template Files\t*.CaseTemplate", OPEN);
+    }
+    return retval;
   }
 
   bool GetEvidenceFolderAndCasePath()
   {
     bool retval;
     NameListClass cmd_args = SystemClass::GetArgs();
-    if (cmd_args.Count() == 2)
+    if (cmd_args.Count() >= 2)
     {
       CasePath       = cmd_args.GetChild(0).Name();
       EvidenceFolder = cmd_args.GetChild(1).Name();
@@ -124,7 +233,18 @@ class MainClass {
         String case_folder = CasePath.GetFilePath();
         if (LocalMachine.PathExists(case_folder))
         {
-          retval = true;
+          if (cmd_args.Count() == 3)
+          {
+            CaseTemplatePath = cmd_args.GetChild(2).Name();
+            if (LocalMachine.PathExists(CaseTemplatePath))
+            {
+              retval = true;
+            }
+          }
+          else
+          {
+            retval = true;
+          }
         }
       }
     }
@@ -135,42 +255,59 @@ class MainClass {
     return retval;
   }
 
+  bool ReadCaseFromTemplate()
+  {
+    bool retval;
+    LocalFileClass input();
+    if (input.Open(CaseTemplatePath))
+    {
+      LocalFileClass output();
+      if (output.Open(CasePath, WRITE))
+      {
+        output.WriteBuffer(input);
+        output.Close();
+        retval = C.Read(CasePath);
+      }
+    }
+    return retval;
+  }
+
   bool GetCase()
   {
     CaseName  = CasePath.GetFilename();
 
-    String case_folder = CasePath.GetFilePath(),
-           evidence_cache_folder = String::Format("{0}\\EvidenceCache", case_folder);
+    String case_folder = CasePath.GetFilePath();
 
     if ((int pos = CaseName.Find(".")) > 0)
     {
       CaseName =  CaseName.SubString(0, pos);
       C = new CaseClass(null, CaseName);
-
-      C.SetInfo(SETINFO_NAME, CaseName);
-      C.SetInfo(SETINFO_PATH, CasePath);
-      C.SetInfo(SETINFO_CASE_FOLDER, case_folder);
-      C.SetInfo(SETINFO_USE_BASE_FOLDER, true);
-
-      /*
-
-        In order to use the evidence cache in the base case folder, we
-        must save and re-open the case otherwise the results of evidence
-        processing will be saved in the default evidence cache location,
-        which is typically:
-
-        - %USERPROFILE%\Documents\EnCase\EvidenceCache
-
-      */
-
-      if (C.Write(CasePath))
+      if (!CaseTemplatePath || ReadCaseFromTemplate())
       {
-        C = new CaseClass();
-        if (C.Read(CasePath))
-        {
-          AddEvidence();
-          return C.Write(CasePath);
-        }
+        C.SetInfo(SETINFO_NAME, CaseName);
+        C.SetInfo(SETINFO_PATH, CasePath);
+        C.SetInfo(SETINFO_CASE_FOLDER, case_folder);
+        C.SetInfo(SETINFO_USE_BASE_FOLDER, true);
+  
+        /*
+         * In order to use the evidence cache in the base case folder, we
+         * must save and re-open the case, add the evidence, and then save
+         * the case again, otherwise the results of evidence processing
+         * will be saved in the default evidence cache location, which
+         * is typically:
+         *
+         *   %USERPROFILE%\Documents\EnCase\EvidenceCache
+         */
+  
+        if (C.Write(CasePath))
+        {
+          C = new CaseClass();
+          if (C.Read(CasePath))
+          {
+            AddEvidence();
+            return C.Write(CasePath);
+          }
+        }
       }
     }
     return false;
@@ -220,25 +357,136 @@ class MainClass {
     return false;
   }
 
+  BookmarkClass GetBookmarkFolder(const String &name)
+  {
+    BookmarkClass folder;
+    if (!(folder = C.BookmarkRoot().Find(name)))
+    {
+      folder = new BookmarkClass(C.BookmarkRoot(), name, NodeClass::FOLDER);
+    }
+    return folder;
+  }
 
+  void AddToResults(ResultSetClass result_set, ItemClass i, const String &comment)
+  {
+    ResultSetClass::DataClass d();
+    ResultClass r();
+    r.CopyItemData(i);
+    r.SetComment(comment);
+    d.Item = r;
+    result_set.Add(d) && result_set.Flush();
+    Log(String::Format(result_set_log_format, i.ItemPath()));
+    UpdateLogAndStatusBar(i, result_set_log_format, result_set_status_bar_format);
+  }
+
+  void UpdateLogAndStatusBar(ItemClass i,
+                            const String &log_format_string,
+                            const String &status_bar_format_string)
+  {
+    Log(String::Format(log_format_string, i.ItemPath()));
+    SystemClass::StatusMessage(String::Format(status_bar_format_string, ++Count));
+  }
+
+  void CheckForJPGAliasFiles(ItemClass i)
+  {
+    if ((i.SignatureResult() == ItemClass::SIG_ALIAS) &&
+        (i.Category() == ItemClass::PICTURE)          &&
+        (i.Signature().Find("JPEG") == 0)
+       )
+    {
+      String comment = "Identified by signature analysis.";
+      if (UseResultSetsInsteadOfBookmarks)
+      {
+        AddToResults(JPEGAliasResults, i, comment);
+      }
+      else
+      {
+        if (BookmarkClass folder = GetBookmarkFolder(jpeg_alias_output_name))
+        {
+         BookmarkDecodeClass dec(folder);
+         dec.SetCodingType(PICTURE);
+         dec.CopyItemData(i);
+         dec.SetComment(comment);
+         UpdateLogAndStatusBar(i, bookmark_log_format, bookmark_status_bar_format);
+        }
+      }
+    }
+  }
+
+  void CheckForKnownDocs(ItemClass i)
+  {
+    if (EntryClass e = EntryClass::TypeCast(i))
+    {
+      /*
+       *
+       * It is much faster to check EntryClass::Hash2SetPropRoot() only if
+       * EntryClass::HasHashSetProp() is non-zero.
+       *
+       */
+
+      if (e.HasHashSetProp() && e.Hash2SetPropRoot().Find("Security Docs"))
+      {
+        String comment = "Identified by hash analysis.";
+        if (UseResultSetsInsteadOfBookmarks)
+        {
+          AddToResults(KnownDocResults, i, comment);
+        }
+        else
+        {
+          if (BookmarkClass folder = GetBookmarkFolder(known_docs_output_name))
+          {
+            BookmarkItemClass bmi(folder);
+            bmi.CopyItemData(i);
+            bmi.SetComment(comment);
+            UpdateLogAndStatusBar(i, bookmark_log_format, bookmark_status_bar_format);
+          }
+        }
+      }
+    }
+  }
+
+  void CheckForNotablePictures(ItemClass i)
+  {
+    if (EntryClass e = EntryClass::TypeCast(i))
+    {
+      /*
+       *
+       * It is much faster to check EntryClass::Hash2SetPropRoot() only if
+       * EntryClass::HasHashSetProp() is non-zero.
+       *
+       */
+
+      if (e.HasHashSetProp() && e.Hash2SetPropRoot().Find("Yellow Banner Pics"))
+      {
+        String comment = "Identified by hash analysis.";
+        if (UseResultSetsInsteadOfBookmarks)
+        {
+          AddToResults(NotablePicResults, i, comment);
+        }
+        else
+        {
+          if (BookmarkClass folder = GetBookmarkFolder(notable_pics_output_name))
+          {
+            BookmarkDecodeClass dec(folder);
+            dec.SetCodingType(PICTURE);
+            dec.CopyItemData(i);
+            dec.SetComment(comment);
+            UpdateLogAndStatusBar(i, bookmark_log_format, bookmark_status_bar_format);
+          }
+        }
+      }
+    }
+  }
 
   void Process()
   {
-    BookmarkClass folder(C.BookmarkRoot(), "Items Identified as JPEG Aliases", NodeClass::FOLDER);
     ItemIteratorClass iter(C, NOPROXY, ALL);
     while (ItemClass i = iter.GetNextItem())
     {
-      if ((i.SignatureResult() == ItemClass::SIG_ALIAS) &&
-          (i.Category() == ItemClass::PICTURE)          &&
-          (i.Signature().Find("JPEG") == 0)
-         )
-      {
-        BookmarkDecodeClass dec(folder);
-        dec.CopyItemData(i);
-        dec.SetCodingType(PICTURE);
-        Console.WriteLine("Bookmarked '{0}'.", i.ItemPath());
-        SystemClass::StatusMessage(String::Format("Items bookmarked: {0}", ++Count));
-      }
+      Log(String::Format("Processing '{0}'.", i.ItemPath()));
+      CheckForJPGAliasFiles(i);
+      CheckForNotablePictures(i);
+      CheckForKnownDocs(i);
     }
   }
 
@@ -250,11 +498,6 @@ class MainClass {
    /*
     * Process all evidence in the  case
     */
-
-    foreach (EvidenceClass ev in C.EvidenceRoot())
-    {
-      C.ClearEvidenceCache(ev, true, true);
-    }
 
     if (manager.AddProcessingJobs(C, C.EvidenceRoot(), ep_options_path))
     {
