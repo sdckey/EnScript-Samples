@@ -19,7 +19,7 @@ set evidence_path="C:\Demo\Demo Evidence"
 :: - Yellow Banner Pics (Notable)
 :: - Security Docs (Known)
 ::
-:: Using hash analysis with a template is necessary to identify known/nptable files.
+:: Using hash analysis with a template is necessary to identify known/notable files.
 
 set case_template_path="C:\Demo\Demo Case Template.CaseTemplate"
 
