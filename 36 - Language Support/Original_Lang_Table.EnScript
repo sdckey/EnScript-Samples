@@ -1,0 +1,40 @@
+/*
+  To use this file:
+
+  - Translate the English language-symbols and add them to the LANG_KOREAN language-table.
+  - Uncomment the '#define LANG_KOREAN' statement.
+  - Rename the file to 'Lang_Table.EnScript'.
+
+  If a Korean language-symbol isn't available, the script will use the English equivalent.
+
+*/
+
+// #define LANG_KOREAN
+
+// English language symbols
+
+#ifdef LANG_ENGLISH
+language
+{
+  HelloWorld                                                   "Hello World!"
+  HowAreYouToday                                               "How are you today?!"
+  MyFavouriteSongLyricIs                                       "My favourite song lyric is '{0}'."
+}
+#endif
+
+// Korean language symbols
+
+#ifdef LANG_KOREAN
+language
+{
+
+}
+#endif
+
+
+// Shared language symbols
+
+language
+{
+  SongLyric                                                    "Is this the real life? Is this just fantasy?"
+}
